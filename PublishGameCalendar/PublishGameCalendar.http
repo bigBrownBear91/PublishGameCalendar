@@ -1,0 +1,6 @@
+@PublishGameCalendar_HostAddress = http://localhost:5233
+
+GET {{PublishGameCalendar_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

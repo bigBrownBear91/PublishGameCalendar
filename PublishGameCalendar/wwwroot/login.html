@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login – Game Calendar</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<nav>
+    <span class="brand">Game Calendar</span>
+    <ul>
+        <li><a href="index.html">Series</a></li>
+        <li><a href="login.html" class="active">Login</a></li>
+        <li><a href="register.html">Register</a></li>
+    </ul>
+</nav>
+
+<main>
+    <div class="form-wrap">
+        <h1>Login</h1>
+
+        <div id="error-msg" style="display:none;background:#fde8e8;color:#c0392b;padding:.6rem .9rem;border-radius:5px;font-size:.85rem;margin-bottom:1rem;">
+            Invalid email or password.
+        </div>
+
+        <form id="login-form" novalidate>
+            <div class="form-group">
+                <label for="email">Email address</label>
+                <input type="email" id="email" placeholder="you@example.com" required />
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="••••••••" required />
+            </div>
+            <button type="submit" class="btn btn-primary" id="submit-btn">Login</button>
+        </form>
+
+        <p class="form-link">No account yet? <a href="register.html">Register here</a></p>
+    </div>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+    // Redirect if already logged in
+    if (currentUser()) window.location.href = 'dashboard.html';
+
+    document.getElementById('login-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const err = document.getElementById('error-msg');
+        const btn = document.getElementById('submit-btn');
+        err.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Logging in…';
+
+        const res = await apiFetch('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+            }),
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            setToken(data.token);
+            window.location.href = data.role === 'Admin' ? 'admin.html' : 'dashboard.html';
+        } else {
+            err.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Login';
+        }
+    });
+</script>
+
+</body>
+</html>

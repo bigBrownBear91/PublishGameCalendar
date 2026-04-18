@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Subscriptions – Game Calendar</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<nav>
+    <span class="brand">Game Calendar</span>
+    <ul>
+        <li><a href="index.html">Series</a></li>
+        <li><a href="dashboard.html" class="active">My Subscriptions</a></li>
+        <li><a href="#" onclick="logout()">Logout</a></li>
+    </ul>
+</nav>
+
+<main>
+    <h1>My Notification Subscriptions</h1>
+
+    <div class="info-box">
+        Enable the toggle for a series to receive an email whenever its fixtures change.
+        You can subscribe to <a href="index.html">.ics calendar URLs</a> without notifications.
+    </div>
+
+    <div id="series-list"><p class="text-muted">Loading…</p></div>
+
+    <p class="text-muted" style="margin-top:.5rem;">
+        Logged in as <strong id="user-email"></strong>
+    </p>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+    if (!requireAuth()) throw new Error('not authenticated');
+    document.getElementById('user-email').textContent = userEmail();
+
+    async function loadDashboard() {
+        const [seriesRes, subsRes] = await Promise.all([
+            apiFetch('/api/series'),
+            apiFetch('/api/subscriptions'),
+        ]);
+        if (!seriesRes.ok || !subsRes.ok) {
+            document.getElementById('series-list').innerHTML = '<p class="text-muted">Failed to load data.</p>';
+            return;
+        }
+        const series      = await seriesRes.json();
+        const subscribedIds = new Set(await subsRes.json());
+
+        if (series.length === 0) {
+            document.getElementById('series-list').innerHTML = '<p class="text-muted">No series available yet.</p>';
+            return;
+        }
+
+        document.getElementById('series-list').innerHTML = series.map(s => {
+            const checked = subscribedIds.has(s.id) ? 'checked' : '';
+            return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">${escHtml(s.name)}</div>
+                        <div class="card-subtitle">${s.enabled ? 'Active' : 'Polling paused'}</div>
+                    </div>
+                    <div class="toggle-wrap">
+                        <span class="text-muted" style="font-size:.85rem;">Notifications</span>
+                        <label class="toggle">
+                            <input type="checkbox" ${checked} onchange="toggleSubscription(${s.id}, this)" />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="copyIcsUrl('${escHtml(s.icsUrl)}', this)">Copy .ics URL</button>
+                    <span class="ics-link">${escHtml(s.icsUrl)}</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function toggleSubscription(seriesId, checkbox) {
+        checkbox.disabled = true;
+        const method = checkbox.checked ? 'POST' : 'DELETE';
+        const res = await apiFetch(`/api/subscriptions/${seriesId}`, { method });
+        if (!res.ok) {
+            checkbox.checked = !checkbox.checked; // revert
+            alert('Failed to update subscription. Please try again.');
+        }
+        checkbox.disabled = false;
+    }
+
+    function copyIcsUrl(url, btn) {
+        navigator.clipboard.writeText(url).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = orig, 1500);
+        });
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    loadDashboard();
+</script>
+
+</body>
+</html>

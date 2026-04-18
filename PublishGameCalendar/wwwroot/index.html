@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game Calendar</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<nav>
+    <span class="brand">Game Calendar</span>
+    <ul id="nav-links"></ul>
+</nav>
+
+<main>
+    <h1>Event Series</h1>
+    <div class="info-box">
+        Click <strong>Copy .ics URL</strong> on any series and paste it into your calendar app
+        (Google Calendar, Apple Calendar, Outlook…) to subscribe. The calendar updates automatically.
+    </div>
+    <div id="series-list"><p class="text-muted">Loading…</p></div>
+    <p class="text-muted" style="margin-top:1rem;" id="cta-register"></p>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+    // ── Nav ──
+    const nav = document.getElementById('nav-links');
+    const user = currentUser();
+    if (user) {
+        const role = userRole();
+        nav.innerHTML = `
+            <li><a href="index.html" class="active">Series</a></li>
+            <li><a href="dashboard.html">My Subscriptions</a></li>
+            ${role === 'Admin' ? '<li><a href="admin.html">Admin</a></li>' : ''}
+            <li><a href="#" onclick="logout()">Logout</a></li>`;
+    } else {
+        nav.innerHTML = `
+            <li><a href="index.html" class="active">Series</a></li>
+            <li><a href="login.html">Login</a></li>
+            <li><a href="register.html">Register</a></li>`;
+        document.getElementById('cta-register').innerHTML =
+            'Want to receive an email when fixtures change? ' +
+            '<a href="register.html" style="color:#5865f2;">Create a free account</a> and subscribe to notifications.';
+    }
+
+    // ── Series ──
+    async function loadSeries() {
+        const res = await apiFetch('/api/series');
+        if (!res.ok) { document.getElementById('series-list').innerHTML = '<p class="text-muted">Failed to load series.</p>'; return; }
+        const list = await res.json();
+
+        if (list.length === 0) {
+            document.getElementById('series-list').innerHTML = '<p class="text-muted">No series available yet.</p>';
+            return;
+        }
+
+        document.getElementById('series-list').innerHTML = list.map(s => {
+            const badge = s.enabled
+                ? '<span class="badge badge-active">Active</span>'
+                : '<span class="badge badge-paused">Paused</span>';
+            const lastPoll = s.lastPolledAt
+                ? `Last polled ${new Date(s.lastPolledAt).toLocaleString()}`
+                : 'Never polled';
+            const btnClass = s.enabled ? 'btn-primary' : 'btn-secondary';
+            return `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">${escHtml(s.name)}</div>
+                        <div class="card-subtitle">${lastPoll}</div>
+                    </div>
+                    ${badge}
+                </div>
+                <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+                    <button class="btn ${btnClass} btn-sm" onclick="copyIcsUrl('${escHtml(s.icsUrl)}', this)">Copy .ics URL</button>
+                    <span class="ics-link">${escHtml(s.icsUrl)}</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function copyIcsUrl(url, btn) {
+        navigator.clipboard.writeText(url).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = orig, 1500);
+        });
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    loadSeries();
+</script>
+
+</body>
+</html>

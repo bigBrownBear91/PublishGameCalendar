@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin – Game Calendar</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<nav>
+    <span class="brand">Game Calendar</span>
+    <ul>
+        <li><a href="index.html">Series</a></li>
+        <li><a href="dashboard.html">My Subscriptions</a></li>
+        <li><a href="admin.html" class="active">Admin</a></li>
+        <li><a href="#" onclick="logout()">Logout</a></li>
+    </ul>
+</nav>
+
+<main>
+    <h1>Admin Panel</h1>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="series">Series</button>
+        <button class="tab-btn" data-tab="polling">Polling Config</button>
+        <button class="tab-btn" data-tab="users">Users</button>
+    </div>
+
+    <!-- ── Tab: Series ── -->
+    <div id="tab-series" class="tab-panel active">
+        <div class="flex-end">
+            <button class="btn btn-primary btn-sm" onclick="openSeriesModal(null)">+ Add Series</button>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden;">
+            <table>
+                <thead><tr><th>Name</th><th>Source URL</th><th>Poller</th><th>Status</th><th></th></tr></thead>
+                <tbody id="series-tbody"><tr><td colspan="5" class="text-muted" style="padding:.75rem">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Tab: Polling Config ── -->
+    <div id="tab-polling" class="tab-panel">
+        <div class="card" style="padding:0;overflow:hidden;">
+            <table>
+                <thead><tr><th>Series</th><th>Interval (h)</th><th>Last polled</th><th>Last change</th><th>Polling</th><th></th></tr></thead>
+                <tbody id="polling-tbody"><tr><td colspan="6" class="text-muted" style="padding:.75rem">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Tab: Users ── -->
+    <div id="tab-users" class="tab-panel">
+        <div class="card" style="padding:0;overflow:hidden;">
+            <table>
+                <thead><tr><th>Email</th><th>Role</th><th>Subscribed to</th><th></th></tr></thead>
+                <tbody id="users-tbody"><tr><td colspan="4" class="text-muted" style="padding:.75rem">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<!-- Series modal -->
+<div id="series-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:8px;padding:2rem;width:440px;max-width:95vw;">
+        <h2 style="margin-bottom:1rem;" id="modal-title">Add Series</h2>
+        <input type="hidden" id="modal-series-id" />
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="modal-name" placeholder="e.g. Premier League 2024/25" />
+        </div>
+        <div class="form-group">
+            <label>Source URL</label>
+            <input type="url" id="modal-url" placeholder="https://source.example.com/…" />
+        </div>
+        <div class="form-group">
+            <label>Poller type</label>
+            <select id="modal-poller">
+                <option value="StubPoller">StubPoller</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Interval (hours)</label>
+            <input type="number" id="modal-interval" min="1" max="8760" value="1" />
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="modal-enabled" checked style="width:auto;margin-right:.4rem;" />
+                Enabled
+            </label>
+        </div>
+        <div id="modal-error" style="display:none;color:#c0392b;font-size:.85rem;margin-bottom:.5rem;"></div>
+        <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1rem;">
+            <button class="btn btn-secondary" onclick="closeSeriesModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveSeries()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+    if (!requireAuth('Admin')) throw new Error('not admin');
+
+    // ── Tabs ──
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+        });
+    });
+
+    function escHtml(s) {
+        return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmtDate(d) { return d ? new Date(d).toLocaleString() : '—'; }
+
+    // ── Series ──
+    async function loadSeries() {
+        const res = await apiFetch('/api/admin/series');
+        if (!res.ok) return;
+        const list = await res.json();
+        document.getElementById('series-tbody').innerHTML = list.length === 0
+            ? '<tr><td colspan="5" class="text-muted" style="padding:.75rem">No series yet.</td></tr>'
+            : list.map(s => `
+            <tr>
+                <td><strong>${escHtml(s.name)}</strong></td>
+                <td><a href="${escHtml(s.sourceUrl)}" class="ics-link" target="_blank">${escHtml(s.sourceUrl)}</a></td>
+                <td>${escHtml(s.pollerType)}</td>
+                <td><span class="badge ${s.enabled ? 'badge-active' : 'badge-paused'}">${s.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                <td style="display:flex;gap:.4rem;">
+                    <button class="btn btn-secondary btn-sm" onclick='openSeriesModal(${JSON.stringify(s)})'>Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSeries(${s.id}, '${escHtml(s.name)}')">Delete</button>
+                </td>
+            </tr>`).join('');
+    }
+
+    function openSeriesModal(series) {
+        document.getElementById('modal-error').style.display = 'none';
+        if (series) {
+            document.getElementById('modal-title').textContent = 'Edit Series';
+            document.getElementById('modal-series-id').value = series.id;
+            document.getElementById('modal-name').value = series.name;
+            document.getElementById('modal-url').value = series.sourceUrl;
+            document.getElementById('modal-poller').value = series.pollerType;
+            document.getElementById('modal-interval').value = series.pollingConfig?.intervalHours ?? 1;
+            document.getElementById('modal-enabled').checked = series.enabled;
+        } else {
+            document.getElementById('modal-title').textContent = 'Add Series';
+            document.getElementById('modal-series-id').value = '';
+            document.getElementById('modal-name').value = '';
+            document.getElementById('modal-url').value = '';
+            document.getElementById('modal-poller').value = 'StubPoller';
+            document.getElementById('modal-interval').value = 1;
+            document.getElementById('modal-enabled').checked = true;
+        }
+        document.getElementById('series-modal').style.display = 'flex';
+    }
+
+    function closeSeriesModal() {
+        document.getElementById('series-modal').style.display = 'none';
+    }
+
+    async function saveSeries() {
+        const id       = document.getElementById('modal-series-id').value;
+        const body = {
+            name:      document.getElementById('modal-name').value,
+            sourceUrl: document.getElementById('modal-url').value,
+            pollerType: document.getElementById('modal-poller').value,
+            enabled:   document.getElementById('modal-enabled').checked,
+            intervalHours: parseInt(document.getElementById('modal-interval').value),
+        };
+        const errEl = document.getElementById('modal-error');
+        errEl.style.display = 'none';
+
+        const res = id
+            ? await apiFetch(`/api/admin/series/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+            : await apiFetch('/api/admin/series', { method: 'POST', body: JSON.stringify(body) });
+
+        if (res.ok) { closeSeriesModal(); loadSeries(); loadPolling(); }
+        else {
+            const msg = await res.text().catch(() => 'Save failed.');
+            errEl.textContent = msg;
+            errEl.style.display = 'block';
+        }
+    }
+
+    async function deleteSeries(id, name) {
+        if (!confirm(`Delete series "${name}"? This cannot be undone.`)) return;
+        const res = await apiFetch(`/api/admin/series/${id}`, { method: 'DELETE' });
+        if (res.ok) { loadSeries(); loadPolling(); }
+        else alert('Delete failed.');
+    }
+
+    // ── Polling Config ──
+    async function loadPolling() {
+        const res = await apiFetch('/api/admin/polling-config');
+        if (!res.ok) return;
+        const list = await res.json();
+        document.getElementById('polling-tbody').innerHTML = list.length === 0
+            ? '<tr><td colspan="6" class="text-muted" style="padding:.75rem">No series yet.</td></tr>'
+            : list.map(c => `
+            <tr>
+                <td>${escHtml(c.seriesName)}</td>
+                <td><input type="number" min="1" max="8760" value="${c.intervalHours}" style="width:70px;padding:.3rem .5rem;border:1px solid #ccc;border-radius:4px;" onchange="savePollingInterval(${c.seriesId}, this.value, ${c.enabled})" /></td>
+                <td>${fmtDate(c.lastPolledAt)}</td>
+                <td>${fmtDate(c.lastChangeAt)}</td>
+                <td>
+                    <label class="toggle">
+                        <input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="savePollingEnabled(${c.seriesId}, this.checked, ${c.intervalHours})" />
+                        <span class="slider"></span>
+                    </label>
+                </td>
+                <td></td>
+            </tr>`).join('');
+    }
+
+    async function savePollingInterval(seriesId, intervalHours, enabled) {
+        await apiFetch(`/api/admin/polling-config/${seriesId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ intervalHours: parseInt(intervalHours), enabled }),
+        });
+    }
+
+    async function savePollingEnabled(seriesId, enabled, intervalHours) {
+        await apiFetch(`/api/admin/polling-config/${seriesId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ intervalHours, enabled }),
+        });
+    }
+
+    // ── Users ──
+    async function loadUsers() {
+        const res = await apiFetch('/api/admin/users');
+        if (!res.ok) return;
+        const list = await res.json();
+        const meEmail = userEmail();
+        document.getElementById('users-tbody').innerHTML = list.length === 0
+            ? '<tr><td colspan="4" class="text-muted" style="padding:.75rem">No users yet.</td></tr>'
+            : list.map(u => `
+            <tr>
+                <td>${escHtml(u.email)}</td>
+                <td><span class="badge ${u.role === 'Admin' ? 'badge-admin' : 'badge-user'}">${u.role}</span></td>
+                <td>${u.subscribedSeries.length > 0 ? escHtml(u.subscribedSeries.join(', ')) : '—'}</td>
+                <td>${u.email !== meEmail && u.role !== 'Admin'
+                    ? `<button class="btn btn-secondary btn-sm" onclick="promoteUser('${u.id}')">Promote to Admin</button>`
+                    : ''}</td>
+            </tr>`).join('');
+    }
+
+    async function promoteUser(userId) {
+        if (!confirm('Promote this user to Admin?')) return;
+        const res = await apiFetch(`/api/admin/users/${userId}/role`, { method: 'PUT', body: JSON.stringify('Admin') });
+        if (res.ok) loadUsers();
+        else alert('Promotion failed.');
+    }
+
+    // ── Init ──
+    loadSeries();
+    loadPolling();
+    loadUsers();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,356 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: system-ui, sans-serif;
+    background: #f4f6f9;
+    color: #222;
+    min-height: 100vh;
+}
+
+/* ── Nav ── */
+nav {
+    background: #1a1a2e;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 56px;
+}
+
+nav .brand {
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: .03em;
+}
+
+nav ul {
+    list-style: none;
+    display: flex;
+    gap: 1.5rem;
+}
+
+nav ul a {
+    color: #cdd6f4;
+    text-decoration: none;
+    font-size: .9rem;
+}
+
+nav ul a:hover, nav ul a.active {
+    color: #fff;
+}
+
+/* ── Layout ── */
+main {
+    max-width: 960px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+h2 {
+    font-size: 1.15rem;
+    margin-bottom: 1rem;
+    color: #444;
+}
+
+/* ── Cards ── */
+.card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .1);
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .75rem;
+}
+
+.card-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-subtitle {
+    font-size: .85rem;
+    color: #666;
+    margin-top: .25rem;
+}
+
+/* ── Buttons ── */
+.btn {
+    display: inline-block;
+    padding: .45rem 1rem;
+    border-radius: 5px;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    transition: opacity .15s;
+}
+
+.btn:hover {
+    opacity: .85;
+}
+
+.btn-primary {
+    background: #5865f2;
+    color: #fff;
+}
+
+.btn-secondary {
+    background: #e0e4ef;
+    color: #333;
+}
+
+.btn-success {
+    background: #2d8a4e;
+    color: #fff;
+}
+
+.btn-danger {
+    background: #c0392b;
+    color: #fff;
+}
+
+.btn-sm {
+    padding: .3rem .7rem;
+    font-size: .8rem;
+}
+
+/* ── Toggle ── */
+.toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+}
+
+.toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    inset: 0;
+    background: #ccc;
+    border-radius: 24px;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: .2s;
+}
+
+.toggle input:checked + .slider {
+    background: #5865f2;
+}
+
+.toggle input:checked + .slider::before {
+    transform: translateX(20px);
+}
+
+/* ── Forms ── */
+.form-wrap {
+    max-width: 400px;
+    margin: 3rem auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .1);
+    padding: 2rem;
+}
+
+.form-wrap h1 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+label {
+    display: block;
+    font-size: .85rem;
+    font-weight: 600;
+    margin-bottom: .3rem;
+}
+
+input[type=email], input[type=password], input[type=text], input[type=number], input[type=url], select {
+    width: 100%;
+    padding: .55rem .75rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: .9rem;
+    color: #222;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #5865f2;
+    box-shadow: 0 0 0 2px rgba(88, 101, 242, .2);
+}
+
+.form-wrap .btn {
+    width: 100%;
+    margin-top: .5rem;
+    padding: .65rem;
+    font-size: .95rem;
+}
+
+.form-link {
+    text-align: center;
+    font-size: .85rem;
+    margin-top: 1rem;
+    color: #555;
+}
+
+.form-link a {
+    color: #5865f2;
+}
+
+/* ── Tables ── */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .88rem;
+}
+
+th {
+    text-align: left;
+    padding: .6rem .75rem;
+    background: #f0f2f8;
+    color: #555;
+    font-size: .8rem;
+    text-transform: uppercase;
+}
+
+td {
+    padding: .65rem .75rem;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Badge ── */
+.badge {
+    display: inline-block;
+    padding: .2rem .55rem;
+    border-radius: 20px;
+    font-size: .75rem;
+    font-weight: 600;
+}
+
+.badge-admin {
+    background: #fde9d9;
+    color: #b94a00;
+}
+
+.badge-user {
+    background: #dff0d8;
+    color: #2d6a2d;
+}
+
+.badge-active {
+    background: #d9f0e8;
+    color: #1d6b44;
+}
+
+.badge-paused {
+    background: #fdf3d9;
+    color: #8a6200;
+}
+
+/* ── Tabs ── */
+.tabs {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #e0e4ef;
+    padding-bottom: 0;
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    padding: .6rem 1.1rem;
+    font-size: .9rem;
+    cursor: pointer;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+
+.tab-btn.active {
+    color: #5865f2;
+    border-bottom-color: #5865f2;
+    font-weight: 600;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* ── Misc ── */
+.ics-link {
+    font-size: .8rem;
+    color: #5865f2;
+    word-break: break-all;
+}
+
+.info-box {
+    background: #eef1ff;
+    border-left: 3px solid #5865f2;
+    padding: .75rem 1rem;
+    border-radius: 4px;
+    font-size: .85rem;
+    margin-bottom: 1.25rem;
+    color: #333;
+}
+
+.flex-end {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+}
+
+.text-muted {
+    color: #888;
+    font-size: .85rem;
+}
