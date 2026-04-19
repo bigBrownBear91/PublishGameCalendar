@@ -11,7 +11,9 @@ public class PollerFactoryTests
     public PollerFactoryTests()
     {
         ServiceCollection services = new ServiceCollection();
+        services.AddLogging();
         services.AddTransient<StubPoller>();
+        services.AddHttpClient<DoubleRoundRobinPoller>();
         ServiceProvider provider = services.BuildServiceProvider();
         _sut = new PollerFactory(provider);
     }
@@ -24,6 +26,16 @@ public class PollerFactoryTests
 
         // Assert
         Assert.IsType<StubPoller>(poller);
+    }
+
+    [Fact]
+    public void Create_WithDoubleRoundRobinPollerType_ReturnsDoubleRoundRobinPoller()
+    {
+        // Act
+        IWebsitePoller poller = _sut.Create(nameof(DoubleRoundRobinPoller));
+
+        // Assert
+        Assert.IsType<DoubleRoundRobinPoller>(poller);
     }
 
     [Fact]
