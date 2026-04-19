@@ -45,6 +45,7 @@ public class RabbitMqQueueAdapter : IQueueAdapter, IAsyncDisposable
                 await _channel.QueueDeclareAsync(QueueName, false, false, false);
             }
 
+            // ReSharper disable once NullableWarningSuppressionIsUsed
             return _channel!;
         }
         finally

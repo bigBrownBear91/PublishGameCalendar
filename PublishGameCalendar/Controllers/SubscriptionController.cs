@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.Repositories;
+// ReSharper disable NullableWarningSuppressionIsUsed
 
 namespace PublishGameCalendar.Controllers;
 

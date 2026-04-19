@@ -82,6 +82,7 @@ public class OrchestratorService : BackgroundService
                 config.LastChangeAt = now;
 
                 List<Subscription> subscribers = await subscriptionRepo.GetBySeriesIdAsync(series.Id);
+                // ReSharper disable once NullableWarningSuppressionIsUsed
                 List<string> emails = subscribers.Select(s => s.User.Email!).Where(e => !string.IsNullOrEmpty(e))
                     .ToList();
 

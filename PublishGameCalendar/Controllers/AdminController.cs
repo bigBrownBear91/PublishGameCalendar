@@ -45,6 +45,7 @@ public class AdminController : ControllerBase
             dtos.Add(new UserDto
             {
                 Id = user.Id,
+                // ReSharper disable once NullableWarningSuppressionIsUsed
                 Email = user.Email!,
                 Role = roles.FirstOrDefault() ?? Roles.User,
                 SubscribedSeries = subs.Select(s => s.Series.Name).ToList()
