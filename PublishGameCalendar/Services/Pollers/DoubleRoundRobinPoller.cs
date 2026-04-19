@@ -28,9 +28,9 @@ public class DoubleRoundRobinPoller : IWebsitePoller
         IDocument document = await context.OpenAsync(req => req.Content(html));
 
         List<Event> events = new();
-        foreach (IElement el in document.QuerySelectorAll("div.match-fixture, div.match-result"))
+        foreach (IElement row in document.QuerySelectorAll("tr.sp-row.sp-post"))
         {
-            Event? ev = ParseMatch(el, sourceUrl);
+            Event? ev = ParseRow(row, sourceUrl);
             if (ev is not null)
                 events.Add(ev);
         }
@@ -38,38 +38,36 @@ public class DoubleRoundRobinPoller : IWebsitePoller
         return events;
     }
 
-    private Event? ParseMatch(IElement el, string sourceUrl)
+    private Event? ParseRow(IElement row, string sourceUrl)
     {
-        string? eventHref = el.QuerySelector(".match-date a")?.GetAttribute("href");
+        string? eventHref = row.QuerySelector("time.sp-event-date a")?.GetAttribute("href");
         string? uid = ExtractEventId(eventHref);
         if (uid is null)
         {
-            _logger.LogWarning("Skipping match element: could not extract event ID from '{Href}'", eventHref);
+            _logger.LogWarning("Skipping row: could not extract event ID from '{Href}'", eventHref);
             return null;
         }
 
-        string? homeHref = el.QuerySelector(".team-home a")?.GetAttribute("href");
-        string? homeName = el.QuerySelector(".team-home a")?.TextContent.Trim();
-        string? awayName = el.QuerySelector(".team-away a")?.TextContent.Trim();
-        string? opponent = IsOurTeam(homeHref, sourceUrl) ? awayName : homeName;
+        string? opponent = null;
+        foreach (IElement span in row.QuerySelectorAll("span.team-logo"))
+        {
+            if (!IsOurTeam(span.QuerySelector("a")?.GetAttribute("href"), sourceUrl))
+            {
+                opponent = span.QuerySelector("div.team-name")?.TextContent.Trim();
+                break;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(opponent))
         {
-            _logger.LogWarning("Skipping match {Uid}: could not determine opponent", uid);
+            _logger.LogWarning("Skipping event {Uid}: could not determine opponent", uid);
             return null;
         }
 
-        string? dateText = el.QuerySelector(".match-date a")?.TextContent.Trim();
-        if (!DateTime.TryParseExact(dateText, "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None,
-                out DateTime date))
-        {
-            _logger.LogWarning("Skipping match {Uid}: could not parse date '{Date}'", uid, dateText);
-            return null;
-        }
+        IElement? timeEl = row.QuerySelector("time.sp-event-date");
+        DateTime start = ParseStartUtc(timeEl?.GetAttribute("content"), timeEl?.GetAttribute("datetime"), uid);
 
-        string? timeText = el.QuerySelector(".match-time a")?.TextContent.Trim();
-        DateTime start = BuildStartUtc(date, timeText);
-
-        string? location = el.QuerySelector(".match-venue")?.TextContent.Trim();
+        string? venue = row.QuerySelector("div.sp-event-venue")?.TextContent.Trim();
 
         return new Event
         {
@@ -77,13 +75,12 @@ public class DoubleRoundRobinPoller : IWebsitePoller
             Title = opponent,
             Start = start,
             End = start.AddHours(2),
-            Location = string.IsNullOrWhiteSpace(location) ? null : location
+            Location = string.IsNullOrWhiteSpace(venue) || venue == "N/A" ? null : venue
         };
     }
 
     private static string? ExtractEventId(string? href)
     {
-        // href = "https://wpmatch.ch/event/263129/"
         if (href is null) return null;
         string[] parts = href.TrimEnd('/').Split('/');
         string id = parts[^1];
@@ -95,18 +92,20 @@ public class DoubleRoundRobinPoller : IWebsitePoller
         return string.Equals(teamHref?.TrimEnd('/'), sourceUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static DateTime BuildStartUtc(DateTime date, string? timeText)
+    private DateTime ParseStartUtc(string? content, string? datetimeAttr, string uid)
     {
-        // timeText format: "20h30"
-        if (!string.IsNullOrWhiteSpace(timeText) && timeText.Contains('h'))
+        if (!string.IsNullOrWhiteSpace(content) &&
+            DateTimeOffset.TryParse(content, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset dto))
+            return dto.UtcDateTime;
+
+        if (!string.IsNullOrWhiteSpace(datetimeAttr) &&
+            DateTime.TryParse(datetimeAttr, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt))
         {
-            string[] parts = timeText.Split('h');
-            if (parts.Length == 2 &&
-                int.TryParse(parts[0], out int hours) &&
-                int.TryParse(parts[1], out int minutes))
-                return DateTime.SpecifyKind(date.AddHours(hours).AddMinutes(minutes), DateTimeKind.Utc);
+            _logger.LogWarning("Event {Uid}: using datetime attribute without timezone offset", uid);
+            return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
         }
 
-        return DateTime.SpecifyKind(date, DateTimeKind.Utc);
+        _logger.LogWarning("Event {Uid}: could not parse datetime", uid);
+        return DateTime.MinValue;
     }
 }

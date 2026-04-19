@@ -26,7 +26,7 @@ public class QueueConsumer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using IConnection connection = await _connectionFactory.CreateConnectionAsync(stoppingToken);
+        using IConnection connection = await ConnectWithRetryAsync(stoppingToken);
         using IChannel channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
         await channel.QueueDeclareAsync(QueueName, false, false, false,
@@ -60,5 +60,23 @@ public class QueueConsumer : BackgroundService
             stoppingToken);
 
         await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private async Task<IConnection> ConnectWithRetryAsync(CancellationToken cancellationToken)
+    {
+        int[] delaysSeconds = [2, 5, 10, 20, 30];
+        for (int i = 0; i <= delaysSeconds.Length; i++)
+        {
+            try
+            {
+                return await _connectionFactory.CreateConnectionAsync(cancellationToken);
+            }
+            catch (Exception ex) when (i < delaysSeconds.Length)
+            {
+                _logger.LogWarning(ex, "RabbitMQ not ready, retrying in {Delay}s…", delaysSeconds[i]);
+                await Task.Delay(TimeSpan.FromSeconds(delaysSeconds[i]), cancellationToken);
+            }
+        }
+        return await _connectionFactory.CreateConnectionAsync(cancellationToken);
     }
 }

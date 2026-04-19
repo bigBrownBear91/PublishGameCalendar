@@ -28,12 +28,12 @@ public class OrchestratorService : BackgroundService
 
     private async Task PollDueSeriesAsync(CancellationToken ct)
     {
-        using IServiceScope scope = _scopeFactory.CreateScope();
+        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IPollingConfigRepository pollingConfigRepo =
             scope.ServiceProvider.GetRequiredService<IPollingConfigRepository>();
         ISubscriptionRepository subscriptionRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
         IIcsService icsService = scope.ServiceProvider.GetRequiredService<IIcsService>();
-        PollerFactory pollerFactory = scope.ServiceProvider.GetRequiredService<PollerFactory>();
+        IPollerFactory pollerFactory = scope.ServiceProvider.GetRequiredService<IPollerFactory>();
         IQueueAdapter queueAdapter = scope.ServiceProvider.GetRequiredService<IQueueAdapter>();
 
         List<PollingConfig> configs = await pollingConfigRepo.GetAllEnabledAsync();
@@ -59,7 +59,7 @@ public class OrchestratorService : BackgroundService
         IPollingConfigRepository pollingConfigRepo,
         ISubscriptionRepository subscriptionRepo,
         IIcsService icsService,
-        PollerFactory pollerFactory,
+        IPollerFactory pollerFactory,
         IQueueAdapter queueAdapter,
         DateTime now,
         CancellationToken ct)
@@ -71,6 +71,15 @@ public class OrchestratorService : BackgroundService
         {
             IWebsitePoller poller = pollerFactory.Create(series.PollerType);
             List<Event> freshEvents = await poller.FetchEventsAsync(series);
+            _logger.LogInformation("Fetched {Count} events for series '{Name}'", freshEvents.Count, series.Name);
+
+            if (freshEvents.Count == 0)
+            {
+                _logger.LogError(
+                    "Poller returned 0 events for series '{Name}' (id={Id}) — skipping update to prevent data loss. " +
+                    "This may indicate a website restructuring.", series.Name, series.Id);
+                return;
+            }
 
             EventDiff diff = await icsService.DiffAsync(series.Id, freshEvents);
 

@@ -2,13 +2,14 @@ using PublishGameCalendar.Domain;
 
 namespace PublishGameCalendar.Services.Pollers;
 
-/// <summary>
-///     Placeholder poller that returns an empty event list. Replace with a concrete implementation per source website.
-/// </summary>
 public class StubPoller : IWebsitePoller
 {
     public Task<List<Event>> FetchEventsAsync(Series series)
     {
-        return Task.FromResult(new List<Event>());
+        DateTime start = new DateTime(2026, 1, 1, 20, 0, 0, DateTimeKind.Utc);
+        return Task.FromResult(new List<Event>
+        {
+            new Event { Uid = "stub-1", Title = "Opponent A", Start = start, End = start.AddHours(2) }
+        });
     }
 }

@@ -14,20 +14,34 @@ namespace PublishGameCalendar.Tests.Services;
 
 public class OrchestratorServiceTests
 {
+    private static readonly List<Event> SomeEvents =
+    [
+        new Event { Uid = "e1", Title = "Opponent A", Start = DateTime.UtcNow, End = DateTime.UtcNow.AddHours(2) }
+    ];
+
     private static IServiceProvider BuildProvider(
         IPollingConfigRepository pollingConfigRepo,
         ISubscriptionRepository subscriptionRepo,
         IIcsService icsService,
-        IQueueAdapter queueAdapter)
+        IQueueAdapter queueAdapter,
+        IPollerFactory pollerFactory)
     {
         ServiceCollection services = new ServiceCollection();
         services.AddSingleton(pollingConfigRepo);
         services.AddSingleton(subscriptionRepo);
         services.AddSingleton(icsService);
-        services.AddTransient<StubPoller>();
-        services.AddTransient<PollerFactory>();
+        services.AddSingleton(pollerFactory);
         services.AddSingleton(queueAdapter);
         return services.BuildServiceProvider();
+    }
+
+    private static Mock<IPollerFactory> PollerReturning(List<Event> events)
+    {
+        Mock<IWebsitePoller> poller = new Mock<IWebsitePoller>();
+        poller.Setup(p => p.FetchEventsAsync(It.IsAny<Series>())).ReturnsAsync(events);
+        Mock<IPollerFactory> factory = new Mock<IPollerFactory>();
+        factory.Setup(f => f.Create(It.IsAny<string>())).Returns(poller.Object);
+        return factory;
     }
 
     private static async Task RunOneTick(OrchestratorService sut, TaskCompletionSource tickComplete)
@@ -42,18 +56,17 @@ public class OrchestratorServiceTests
     public async Task PollDueSeriesAsync_WhenSeriesIsDue_CallsDiffOnIcsService()
     {
         // Arrange
-        Series series = new Series { Id = 1, Name = "PL", PollerType = nameof(StubPoller), Enabled = true };
+        Series series = new Series { Id = 1, Name = "PL", PollerType = "any", Enabled = true };
         PollingConfig config = new PollingConfig
         {
-            SeriesId = 1, Series = series, IntervalHours = 1, Enabled = true,
-            LastPolledAt = null
+            SeriesId = 1, Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
         };
 
         Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
-        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync(new List<PollingConfig> { config });
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
 
         Mock<ISubscriptionRepository> subscriptionRepo = new Mock<ISubscriptionRepository>();
-        subscriptionRepo.Setup(r => r.GetBySeriesIdAsync(1)).ReturnsAsync(new List<Subscription>());
+        subscriptionRepo.Setup(r => r.GetBySeriesIdAsync(1)).ReturnsAsync([]);
 
         TaskCompletionSource tickComplete = new TaskCompletionSource();
         Mock<IIcsService> icsService = new Mock<IIcsService>();
@@ -61,11 +74,9 @@ public class OrchestratorServiceTests
             .Callback(() => tickComplete.TrySetResult())
             .ReturnsAsync(new EventDiff());
 
-        Mock<IQueueAdapter> queueAdapter = new Mock<IQueueAdapter>();
-
         OrchestratorService sut = new OrchestratorService(
             BuildProvider(pollingConfigRepo.Object, subscriptionRepo.Object,
-                    icsService.Object, queueAdapter.Object)
+                    icsService.Object, new Mock<IQueueAdapter>().Object, PollerReturning(SomeEvents).Object)
                 .GetRequiredService<IServiceScopeFactory>(),
             NullLogger<OrchestratorService>.Instance);
 
@@ -80,20 +91,19 @@ public class OrchestratorServiceTests
     public async Task PollDueSeriesAsync_WhenChangesDetected_PublishesNotification()
     {
         // Arrange
-        Series series = new Series { Id = 2, Name = "CL", PollerType = nameof(StubPoller), Enabled = true };
+        Series series = new Series { Id = 2, Name = "CL", PollerType = "any", Enabled = true };
         PollingConfig config = new PollingConfig
         {
-            SeriesId = 2, Series = series, IntervalHours = 1, Enabled = true,
-            LastPolledAt = null
+            SeriesId = 2, Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
         };
 
         Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
-        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync(new List<PollingConfig> { config });
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
 
         ApplicationUser fan = new ApplicationUser { Id = "u1", Email = "fan@test.com" };
         Mock<ISubscriptionRepository> subscriptionRepo = new Mock<ISubscriptionRepository>();
         subscriptionRepo.Setup(r => r.GetBySeriesIdAsync(2))
-            .ReturnsAsync(new List<Subscription> { new Subscription { UserId = "u1", SeriesId = 2, User = fan } });
+            .ReturnsAsync([new Subscription { UserId = "u1", SeriesId = 2, User = fan }]);
 
         EventDiff diff = new EventDiff { Added = [new Event { Uid = "e1", Title = "Final" }] };
         TaskCompletionSource tickComplete = new TaskCompletionSource();
@@ -107,7 +117,7 @@ public class OrchestratorServiceTests
 
         OrchestratorService sut = new OrchestratorService(
             BuildProvider(pollingConfigRepo.Object, subscriptionRepo.Object,
-                    icsService.Object, queueAdapter.Object)
+                    icsService.Object, queueAdapter.Object, PollerReturning(SomeEvents).Object)
                 .GetRequiredService<IServiceScopeFactory>(),
             NullLogger<OrchestratorService>.Instance);
 
@@ -123,7 +133,7 @@ public class OrchestratorServiceTests
     public async Task PollDueSeriesAsync_WhenSeriesNotYetDue_SkipsPoll()
     {
         // Arrange — last polled 10 minutes ago, interval 1 hour
-        Series series = new Series { Id = 3, Name = "EL", PollerType = nameof(StubPoller), Enabled = true };
+        Series series = new Series { Id = 3, Name = "EL", PollerType = "any", Enabled = true };
         PollingConfig config = new PollingConfig
         {
             SeriesId = 3, Series = series, IntervalHours = 1, Enabled = true,
@@ -131,26 +141,56 @@ public class OrchestratorServiceTests
         };
 
         Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
-        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync(new List<PollingConfig> { config });
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
 
-        Mock<ISubscriptionRepository> subscriptionRepo = new Mock<ISubscriptionRepository>();
         Mock<IIcsService> icsService = new Mock<IIcsService>();
-        Mock<IQueueAdapter> queueAdapter = new Mock<IQueueAdapter>();
 
-        // Use a short-lived cancellation so the test doesn't block indefinitely.
-        // We deliberately expect NO calls, so we just let the orchestrator run one cycle.
         using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         OrchestratorService sut = new OrchestratorService(
-            BuildProvider(pollingConfigRepo.Object, subscriptionRepo.Object,
-                    icsService.Object, queueAdapter.Object)
+            BuildProvider(pollingConfigRepo.Object, new Mock<ISubscriptionRepository>().Object,
+                    icsService.Object, new Mock<IQueueAdapter>().Object, PollerReturning(SomeEvents).Object)
                 .GetRequiredService<IServiceScopeFactory>(),
             NullLogger<OrchestratorService>.Instance);
 
         // Act
         await sut.StartAsync(cts.Token);
-        await Task.Delay(300); // let orchestrator tick; no poll should happen
+        await Task.Delay(300);
 
         // Assert
         icsService.Verify(s => s.DiffAsync(It.IsAny<int>(), It.IsAny<List<Event>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenPollerReturnsZeroEvents_SkipsDiffAndWrite()
+    {
+        // Arrange
+        Series series = new Series { Id = 4, Name = "BL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = 4, Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+
+        Mock<IIcsService> icsService = new Mock<IIcsService>();
+
+        // Poller returns 0 events — simulates a website restructuring
+        Mock<IPollerFactory> zeroEventsFactory = PollerReturning([]);
+
+        using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        OrchestratorService sut = new OrchestratorService(
+            BuildProvider(pollingConfigRepo.Object, new Mock<ISubscriptionRepository>().Object,
+                    icsService.Object, new Mock<IQueueAdapter>().Object, zeroEventsFactory.Object)
+                .GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<OrchestratorService>.Instance);
+
+        // Act
+        await sut.StartAsync(cts.Token);
+        await Task.Delay(300);
+
+        // Assert — neither diff nor write was called, protecting existing data
+        icsService.Verify(s => s.DiffAsync(It.IsAny<int>(), It.IsAny<List<Event>>()), Times.Never);
+        icsService.Verify(s => s.WriteAsync(It.IsAny<int>(), It.IsAny<List<Event>>()), Times.Never);
     }
 }

@@ -73,7 +73,7 @@ builder.Services.AddScoped<IPollingConfigRepository, PollingConfigRepository>();
 builder.Services.AddSingleton<IIcsService, IcsService>();
 builder.Services.AddTransient<StubPoller>();
 builder.Services.AddHttpClient<DoubleRoundRobinPoller>();
-builder.Services.AddTransient<PollerFactory>();
+builder.Services.AddTransient<IPollerFactory, PollerFactory>();
 builder.Services.AddTransient<IQueueAdapter, RabbitMqQueueAdapter>();
 
 // ── Orchestrator ──

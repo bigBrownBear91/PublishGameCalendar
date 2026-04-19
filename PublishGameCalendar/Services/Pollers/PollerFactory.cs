@@ -1,6 +1,6 @@
 namespace PublishGameCalendar.Services.Pollers;
 
-public class PollerFactory
+public class PollerFactory : IPollerFactory
 {
     private readonly IServiceProvider _provider;
 

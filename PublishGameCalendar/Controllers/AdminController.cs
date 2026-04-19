@@ -115,7 +115,7 @@ public class AdminController : ControllerBase
         PollingConfig config = new PollingConfig { SeriesId = series.Id, IntervalHours = request.IntervalHours };
         await _pollingConfigRepo.CreateAsync(config);
 
-        return CreatedAtAction(nameof(GetSeries), new { id = series.Id }, series);
+        return NoContent();
     }
 
     [HttpPut("series/{id}")]
