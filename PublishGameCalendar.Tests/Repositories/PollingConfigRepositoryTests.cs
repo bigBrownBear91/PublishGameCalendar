@@ -64,6 +64,7 @@ public class PollingConfigRepositoryTests
 
         // Assert
         PollingConfig? updated = await repo.GetBySeriesIdAsync(series.Id);
+        // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Equal(6, updated!.IntervalHours);
     }
 }

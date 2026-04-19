@@ -93,6 +93,7 @@ public class SeriesRepositoryTests
 
         // Assert
         Series? updated = await repo.GetByIdAsync(created.Id);
+        // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Equal("New", updated!.Name);
     }
 }
