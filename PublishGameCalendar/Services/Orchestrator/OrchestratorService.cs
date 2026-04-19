@@ -78,12 +78,16 @@ public class OrchestratorService : BackgroundService
                 _logger.LogError(
                     "Poller returned 0 events for series '{Name}' (id={Id}) — skipping update to prevent data loss. " +
                     "This may indicate a website restructuring.", series.Name, series.Id);
+                config.LastPolledAt = now;
+                config.LastPollFailed = true;
+                await pollingConfigRepo.UpdateAsync(config);
                 return;
             }
 
             EventDiff diff = await icsService.DiffAsync(series.Id, freshEvents);
 
             config.LastPolledAt = now;
+            config.LastPollFailed = false;
 
             if (diff.HasChanges)
             {
@@ -109,6 +113,13 @@ public class OrchestratorService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error polling series '{Name}' (id={Id})", series.Name, series.Id);
+            config.LastPolledAt = now;
+            config.LastPollFailed = true;
+            try { await pollingConfigRepo.UpdateAsync(config); }
+            catch (Exception updateEx)
+            {
+                _logger.LogError(updateEx, "Failed to persist poll failure for series '{Name}' (id={Id})", series.Name, series.Id);
+            }
         }
     }
 }

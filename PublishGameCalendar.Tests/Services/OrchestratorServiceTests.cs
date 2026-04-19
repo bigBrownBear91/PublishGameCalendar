@@ -175,13 +175,10 @@ public class OrchestratorServiceTests
 
         Mock<IIcsService> icsService = new Mock<IIcsService>();
 
-        // Poller returns 0 events — simulates a website restructuring
-        Mock<IPollerFactory> zeroEventsFactory = PollerReturning([]);
-
         using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         OrchestratorService sut = new OrchestratorService(
             BuildProvider(pollingConfigRepo.Object, new Mock<ISubscriptionRepository>().Object,
-                    icsService.Object, new Mock<IQueueAdapter>().Object, zeroEventsFactory.Object)
+                    icsService.Object, new Mock<IQueueAdapter>().Object, PollerReturning([]).Object)
                 .GetRequiredService<IServiceScopeFactory>(),
             NullLogger<OrchestratorService>.Instance);
 
@@ -192,5 +189,108 @@ public class OrchestratorServiceTests
         // Assert — neither diff nor write was called, protecting existing data
         icsService.Verify(s => s.DiffAsync(It.IsAny<int>(), It.IsAny<List<Event>>()), Times.Never);
         icsService.Verify(s => s.WriteAsync(It.IsAny<int>(), It.IsAny<List<Event>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenPollerReturnsZeroEvents_SetsLastPollFailedAndUpdatesConfig()
+    {
+        // Arrange
+        Series series = new Series { Id = 5, Name = "RL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = 5, Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        pollingConfigRepo.Setup(r => r.UpdateAsync(It.IsAny<PollingConfig>()))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        OrchestratorService sut = new OrchestratorService(
+            BuildProvider(pollingConfigRepo.Object, new Mock<ISubscriptionRepository>().Object,
+                    new Mock<IIcsService>().Object, new Mock<IQueueAdapter>().Object, PollerReturning([]).Object)
+                .GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<OrchestratorService>.Instance);
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert — config saved with failure flag and LastPolledAt set
+        pollingConfigRepo.Verify(r => r.UpdateAsync(It.Is<PollingConfig>(c =>
+            c.LastPollFailed == true && c.LastPolledAt.HasValue)), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenPollerSucceeds_ClearsLastPollFailed()
+    {
+        // Arrange — config previously marked as failed
+        Series series = new Series { Id = 6, Name = "SL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = 6, Series = series, IntervalHours = 1, Enabled = true,
+            LastPolledAt = null, LastPollFailed = true
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        pollingConfigRepo.Setup(r => r.UpdateAsync(It.IsAny<PollingConfig>()))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        Mock<IIcsService> icsService = new Mock<IIcsService>();
+        icsService.Setup(s => s.DiffAsync(6, It.IsAny<List<Event>>())).ReturnsAsync(new EventDiff());
+
+        OrchestratorService sut = new OrchestratorService(
+            BuildProvider(pollingConfigRepo.Object, new Mock<ISubscriptionRepository>().Object,
+                    icsService.Object, new Mock<IQueueAdapter>().Object, PollerReturning(SomeEvents).Object)
+                .GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<OrchestratorService>.Instance);
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert — LastPollFailed cleared on successful poll
+        pollingConfigRepo.Verify(r => r.UpdateAsync(It.Is<PollingConfig>(c =>
+            c.LastPollFailed == false)), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenPollerThrows_SetsLastPollFailedAndSavesConfig()
+    {
+        // Arrange
+        Series series = new Series { Id = 7, Name = "CUP", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = 7, Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        pollingConfigRepo.Setup(r => r.UpdateAsync(It.IsAny<PollingConfig>()))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        Mock<IWebsitePoller> poller = new Mock<IWebsitePoller>();
+        poller.Setup(p => p.FetchEventsAsync(It.IsAny<Series>()))
+            .ThrowsAsync(new HttpRequestException("connection refused"));
+        Mock<IPollerFactory> factory = new Mock<IPollerFactory>();
+        factory.Setup(f => f.Create(It.IsAny<string>())).Returns(poller.Object);
+
+        OrchestratorService sut = new OrchestratorService(
+            BuildProvider(pollingConfigRepo.Object, new Mock<ISubscriptionRepository>().Object,
+                    new Mock<IIcsService>().Object, new Mock<IQueueAdapter>().Object, factory.Object)
+                .GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<OrchestratorService>.Instance);
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert — failure recorded even when poller throws
+        pollingConfigRepo.Verify(r => r.UpdateAsync(It.Is<PollingConfig>(c =>
+            c.LastPollFailed == true && c.LastPolledAt.HasValue)), Times.AtLeastOnce);
     }
 }

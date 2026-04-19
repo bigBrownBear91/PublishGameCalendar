@@ -93,6 +93,7 @@ public class AdminController : ControllerBase
                     IntervalHours = s.PollingConfig.IntervalHours,
                     LastPolledAt = s.PollingConfig.LastPolledAt,
                     LastChangeAt = s.PollingConfig.LastChangeAt,
+                    LastPollFailed = s.PollingConfig.LastPollFailed,
                     Enabled = s.PollingConfig.Enabled
                 }
         }).ToList();
@@ -153,6 +154,7 @@ public class AdminController : ControllerBase
             IntervalHours = c.IntervalHours,
             LastPolledAt = c.LastPolledAt,
             LastChangeAt = c.LastChangeAt,
+            LastPollFailed = c.LastPollFailed,
             Enabled = c.Enabled
         }).ToList();
 

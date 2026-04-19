@@ -293,6 +293,11 @@ tr:last-child td {
     color: #8a6200;
 }
 
+.badge-danger {
+    background: #fde8e8;
+    color: #c0392b;
+}
+
 /* ── Tabs ── */
 .tabs {
     display: flex;

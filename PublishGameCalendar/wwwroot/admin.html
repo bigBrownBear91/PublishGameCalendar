@@ -44,7 +44,7 @@
     <div id="tab-polling" class="tab-panel">
         <div class="card" style="padding:0;overflow:hidden;">
             <table>
-                <thead><tr><th>Series</th><th>Interval (h)</th><th>Last polled</th><th>Last change</th><th>Polling</th><th></th></tr></thead>
+                <thead><tr><th>Series</th><th>Interval (h)</th><th>Last polled</th><th>Last change</th><th>Status</th><th>Polling</th><th></th></tr></thead>
                 <tbody id="polling-tbody"><tr><td colspan="6" class="text-muted" style="padding:.75rem">Loading…</td></tr></tbody>
             </table>
         </div>
@@ -118,6 +118,14 @@
     }
 
     function fmtDate(d) { return d ? new Date(d).toLocaleString() : '—'; }
+
+    function pollStatus(lastPolledAt, lastPollFailed) {
+        if (!lastPolledAt)
+            return '<span class="badge badge-paused">Never polled</span>';
+        if (lastPollFailed)
+            return '<span class="badge badge-danger" title="Last poll returned 0 events — possible website restructuring. Verify website structure or check if season is off.">0 events ⚠</span>';
+        return '<span class="badge badge-active">OK</span>';
+    }
 
     // ── Series ──
     async function loadSeries() {
@@ -209,6 +217,7 @@
                 <td><input type="number" min="1" max="8760" value="${c.intervalHours}" style="width:70px;padding:.3rem .5rem;border:1px solid #ccc;border-radius:4px;" onchange="savePollingInterval(${c.seriesId}, this.value, ${c.enabled})" /></td>
                 <td>${fmtDate(c.lastPolledAt)}</td>
                 <td>${fmtDate(c.lastChangeAt)}</td>
+                <td>${pollStatus(c.lastPolledAt, c.lastPollFailed)}</td>
                 <td>
                     <label class="toggle">
                         <input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="savePollingEnabled(${c.seriesId}, this.checked, ${c.intervalHours})" />

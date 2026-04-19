@@ -7,5 +7,6 @@ public class PollingConfigDto
     public int IntervalHours { get; set; }
     public DateTime? LastPolledAt { get; set; }
     public DateTime? LastChangeAt { get; set; }
+    public bool LastPollFailed { get; set; }
     public bool Enabled { get; set; }
 }

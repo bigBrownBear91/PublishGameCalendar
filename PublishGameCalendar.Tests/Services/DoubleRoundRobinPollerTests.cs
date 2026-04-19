@@ -125,6 +125,30 @@ public class DoubleRoundRobinPollerTests
     }
 
     [Fact]
+    public async Task ParseAsync_WhenVenueIsNA_ReturnsNullLocation()
+    {
+        const string html = """
+            <html><body><table><tbody>
+            <tr class="sp-row sp-post">
+              <td>
+                <span class="team-logo logo-odd"><a href="https://wpmatch.ch/team/sk-bern-ii/"><div class="team-name">SK Bern II</div></a></span>
+                <span class="team-logo logo-even"><a href="https://wpmatch.ch/team/wk-thun/"><div class="team-name">WK Thun</div></a></span>
+                <time class="sp-event-date" datetime="2026-06-15 20:00:00" content="2026-06-15T20:00:00+02:00">
+                  <a href="https://wpmatch.ch/event/888/">15.06.2026</a>
+                </time>
+                <div class="sp-event-venue"><div itemprop="address">N/A</div></div>
+              </td>
+            </tr>
+            </tbody></table></body></html>
+            """;
+
+        List<Event> events = await _sut.ParseAsync(html, SourceUrl);
+
+        Assert.Single(events);
+        Assert.Null(events[0].Location);
+    }
+
+    [Fact]
     public async Task ParseAsync_EmptyPage_ReturnsEmptyList()
     {
         List<Event> events = await _sut.ParseAsync("<html><body></body></html>", SourceUrl);
