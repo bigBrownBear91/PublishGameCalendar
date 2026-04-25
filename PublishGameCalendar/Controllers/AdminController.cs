@@ -155,6 +155,7 @@ public class AdminController : ControllerBase
             LastPolledAt = c.LastPolledAt,
             LastChangeAt = c.LastChangeAt,
             LastPollFailed = c.LastPollFailed,
+            LastEventCount = c.LastEventCount,
             Enabled = c.Enabled
         }).ToList();
 

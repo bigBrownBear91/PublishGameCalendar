@@ -8,5 +8,6 @@ public class PollingConfigDto
     public DateTime? LastPolledAt { get; set; }
     public DateTime? LastChangeAt { get; set; }
     public bool LastPollFailed { get; set; }
+    public int? LastEventCount { get; set; }
     public bool Enabled { get; set; }
 }

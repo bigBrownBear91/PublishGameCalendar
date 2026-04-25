@@ -80,6 +80,7 @@ public class OrchestratorService : BackgroundService
                     "This may indicate a website restructuring.", series.Name, series.Id);
                 config.LastPolledAt = now;
                 config.LastPollFailed = true;
+                config.LastEventCount = 0;
                 await pollingConfigRepo.UpdateAsync(config);
                 return;
             }
@@ -88,6 +89,7 @@ public class OrchestratorService : BackgroundService
 
             config.LastPolledAt = now;
             config.LastPollFailed = false;
+            config.LastEventCount = freshEvents.Count;
 
             if (diff.HasChanges)
             {

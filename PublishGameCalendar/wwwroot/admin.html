@@ -44,8 +44,8 @@
     <div id="tab-polling" class="tab-panel">
         <div class="card" style="padding:0;overflow:hidden;">
             <table>
-                <thead><tr><th>Series</th><th>Interval (h)</th><th>Last polled</th><th>Last change</th><th>Status</th><th>Polling</th><th></th></tr></thead>
-                <tbody id="polling-tbody"><tr><td colspan="6" class="text-muted" style="padding:.75rem">Loading…</td></tr></tbody>
+                <thead><tr><th>Series</th><th>Interval (h)</th><th>Last polled</th><th>Last change</th><th>Events</th><th>Status</th><th>Polling</th><th></th></tr></thead>
+                <tbody id="polling-tbody"><tr><td colspan="7" class="text-muted" style="padding:.75rem">Loading…</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -210,13 +210,14 @@
         if (!res.ok) return;
         const list = await res.json();
         document.getElementById('polling-tbody').innerHTML = list.length === 0
-            ? '<tr><td colspan="6" class="text-muted" style="padding:.75rem">No series yet.</td></tr>'
+            ? '<tr><td colspan="7" class="text-muted" style="padding:.75rem">No series yet.</td></tr>'
             : list.map(c => `
             <tr>
                 <td>${escHtml(c.seriesName)}</td>
                 <td><input type="number" min="1" max="8760" value="${c.intervalHours}" style="width:70px;padding:.3rem .5rem;border:1px solid #ccc;border-radius:4px;" onchange="savePollingInterval(${c.seriesId}, this.value, ${c.enabled})" /></td>
                 <td>${fmtDate(c.lastPolledAt)}</td>
                 <td>${fmtDate(c.lastChangeAt)}</td>
+                <td>${c.lastEventCount != null ? c.lastEventCount : '—'}</td>
                 <td>${pollStatus(c.lastPolledAt, c.lastPollFailed)}</td>
                 <td>
                     <label class="toggle">
