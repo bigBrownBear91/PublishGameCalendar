@@ -14,7 +14,7 @@ public class PollerFactory : IPollerFactory
         return pollerType switch
         {
             nameof(StubPoller) => _provider.GetRequiredService<StubPoller>(),
-            nameof(DoubleRoundRobinPoller) => _provider.GetRequiredService<DoubleRoundRobinPoller>(),
+            nameof(Poller1) => _provider.GetRequiredService<Poller1>(),
             _ => throw new NotSupportedException($"Poller type '{pollerType}' is not registered.")
         };
     }

@@ -1,3 +1,4 @@
+// Parses the HTML structure used by wpmatch.ch (e.g. SKBE2 league pages).
 using System.Globalization;
 using AngleSharp;
 using AngleSharp.Dom;
@@ -5,12 +6,12 @@ using PublishGameCalendar.Domain;
 
 namespace PublishGameCalendar.Services.Pollers;
 
-public class DoubleRoundRobinPoller : IWebsitePoller
+public class Poller1 : IWebsitePoller
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<DoubleRoundRobinPoller> _logger;
+    private readonly ILogger<Poller1> _logger;
 
-    public DoubleRoundRobinPoller(HttpClient httpClient, ILogger<DoubleRoundRobinPoller> logger)
+    public Poller1(HttpClient httpClient, ILogger<Poller1> logger)
     {
         _httpClient = httpClient;
         _logger = logger;

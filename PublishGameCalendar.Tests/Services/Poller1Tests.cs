@@ -5,7 +5,7 @@ using Xunit;
 
 namespace PublishGameCalendar.Tests.Services;
 
-public class DoubleRoundRobinPollerTests
+public class Poller1Tests
 {
     private const string SourceUrl = "https://wpmatch.ch/team/sk-bern-ii/";
 
@@ -38,8 +38,8 @@ public class DoubleRoundRobinPollerTests
         </tr>
         """;
 
-    private readonly DoubleRoundRobinPoller _sut =
-        new DoubleRoundRobinPoller(new HttpClient(), NullLogger<DoubleRoundRobinPoller>.Instance);
+    private readonly Poller1 _sut =
+        new Poller1(new HttpClient(), NullLogger<Poller1>.Instance);
 
     private static string TablePage(string rows) =>
         $"<html><body><table><tbody>{rows}</tbody></table></body></html>";
