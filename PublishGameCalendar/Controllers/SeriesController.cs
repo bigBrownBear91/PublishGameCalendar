@@ -38,7 +38,7 @@ public class SeriesController : ControllerBase
     }
 
     [HttpGet("{id}/calendar.ics")]
-    public async Task<IActionResult> GetIcsFile(int id)
+    public async Task<IActionResult> GetIcsFile(string id)
     {
         Series? series = await _seriesRepo.GetByIdAsync(id);
         if (series is null) return NotFound();

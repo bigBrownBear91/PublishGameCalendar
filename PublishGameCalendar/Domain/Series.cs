@@ -1,14 +1,28 @@
+using Amazon.DynamoDBv2.DataModel;
+
 namespace PublishGameCalendar.Domain;
 
+[DynamoDBTable("series")]
 public class Series
 {
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string SourceUrl { get; set; } = string.Empty;
-    public string PollerType { get; set; } = string.Empty;
-    public bool Enabled { get; set; } = true;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [DynamoDBHashKey("id")]
+    public string Id { get; set; } = string.Empty;
 
+    [DynamoDBProperty("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [DynamoDBProperty("source_url")]
+    public string SourceUrl { get; set; } = string.Empty;
+
+    [DynamoDBProperty("poller_type")]
+    public string PollerType { get; set; } = string.Empty;
+
+    [DynamoDBProperty("enabled")]
+    public bool Enabled { get; set; } = true;
+
+    [DynamoDBProperty("created_at")]
+    public string CreatedAt { get; set; } = DateTime.UtcNow.ToString("O");
+
+    [DynamoDBIgnore]
     public PollingConfig? PollingConfig { get; set; }
-    public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
 }

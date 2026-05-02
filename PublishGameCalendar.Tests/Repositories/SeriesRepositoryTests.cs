@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using PublishGameCalendar.Data;
+using Moq;
+using PublishGameCalendar.Data.DynamoDb;
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.Repositories;
 using Xunit;
@@ -8,40 +8,40 @@ namespace PublishGameCalendar.Tests.Repositories;
 
 public class SeriesRepositoryTests
 {
-    private static ApplicationDbContext CreateContext(string dbName)
+    private static (Mock<IDynamoDbContext> db, Mock<IPollingConfigRepository> pollingRepo, DynamoDbSeriesRepository repo) Build()
     {
-        DbContextOptions<ApplicationDbContext> options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options;
-        return new ApplicationDbContext(options);
+        Mock<IDynamoDbContext> db = new();
+        Mock<IPollingConfigRepository> pollingRepo = new();
+        pollingRepo.Setup(r => r.GetBySeriesIdAsync(It.IsAny<string>())).ReturnsAsync((PollingConfig?)null);
+        DynamoDbSeriesRepository repo = new(db.Object, pollingRepo.Object);
+        return (db, pollingRepo, repo);
     }
 
     [Fact]
-    public async Task CreateAsync_PersistsSeries()
+    public async Task CreateAsync_SavesSeriesAndReturnsIt()
     {
         // Arrange
-        using ApplicationDbContext db = CreateContext(nameof(CreateAsync_PersistsSeries));
-        SeriesRepository repo = new SeriesRepository(db);
-        Series series = new Series { Name = "Test", SourceUrl = "http://x.com", PollerType = "StubPoller" };
+        (Mock<IDynamoDbContext> db, _, DynamoDbSeriesRepository repo) = Build();
+        Series series = new() { Id = "s1", Name = "PL", SourceUrl = "http://x.com", PollerType = "StubPoller" };
 
         // Act
-        await repo.CreateAsync(series);
+        Series result = await repo.CreateAsync(series);
 
         // Assert
-        Assert.Equal(1, await db.Series.CountAsync());
+        db.Verify(d => d.SaveAsync(series, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("s1", result.Id);
     }
 
     [Fact]
     public async Task GetByIdAsync_WhenExists_ReturnsSeries()
     {
         // Arrange
-        using ApplicationDbContext db = CreateContext(nameof(GetByIdAsync_WhenExists_ReturnsSeries));
-        SeriesRepository repo = new SeriesRepository(db);
-        Series created = await repo.CreateAsync(new Series
-            { Name = "PL", SourceUrl = "http://x.com", PollerType = "StubPoller" });
+        (Mock<IDynamoDbContext> db, _, DynamoDbSeriesRepository repo) = Build();
+        Series stored = new() { Id = "s1", Name = "PL" };
+        db.Setup(d => d.LoadAsync<Series>("s1", It.IsAny<CancellationToken>())).ReturnsAsync(stored);
 
         // Act
-        Series? result = await repo.GetByIdAsync(created.Id);
+        Series? result = await repo.GetByIdAsync("s1");
 
         // Assert
         Assert.NotNull(result);
@@ -52,48 +52,41 @@ public class SeriesRepositoryTests
     public async Task GetByIdAsync_WhenNotExists_ReturnsNull()
     {
         // Arrange
-        using ApplicationDbContext db = CreateContext(nameof(GetByIdAsync_WhenNotExists_ReturnsNull));
-        SeriesRepository repo = new SeriesRepository(db);
+        (Mock<IDynamoDbContext> db, _, DynamoDbSeriesRepository repo) = Build();
+        db.Setup(d => d.LoadAsync<Series>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Series?)null);
 
         // Act
-        Series? result = await repo.GetByIdAsync(999);
+        Series? result = await repo.GetByIdAsync("missing");
 
         // Assert
         Assert.Null(result);
     }
 
     [Fact]
-    public async Task DeleteAsync_RemovesSeries()
+    public async Task DeleteAsync_CallsDeleteOnContext()
     {
         // Arrange
-        using ApplicationDbContext db = CreateContext(nameof(DeleteAsync_RemovesSeries));
-        SeriesRepository repo = new SeriesRepository(db);
-        Series created = await repo.CreateAsync(new Series
-            { Name = "PL", SourceUrl = "http://x.com", PollerType = "StubPoller" });
+        (Mock<IDynamoDbContext> db, _, DynamoDbSeriesRepository repo) = Build();
 
         // Act
-        await repo.DeleteAsync(created.Id);
+        await repo.DeleteAsync("s1");
 
         // Assert
-        Assert.Equal(0, await db.Series.CountAsync());
+        db.Verify(d => d.DeleteAsync<Series>("s1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task UpdateAsync_PersistsChanges()
+    public async Task UpdateAsync_CallsSaveOnContext()
     {
         // Arrange
-        using ApplicationDbContext db = CreateContext(nameof(UpdateAsync_PersistsChanges));
-        SeriesRepository repo = new SeriesRepository(db);
-        Series created = await repo.CreateAsync(new Series
-            { Name = "Old", SourceUrl = "http://x.com", PollerType = "StubPoller" });
+        (Mock<IDynamoDbContext> db, _, DynamoDbSeriesRepository repo) = Build();
+        Series series = new() { Id = "s1", Name = "Updated" };
 
         // Act
-        created.Name = "New";
-        await repo.UpdateAsync(created);
+        await repo.UpdateAsync(series);
 
         // Assert
-        Series? updated = await repo.GetByIdAsync(created.Id);
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Equal("New", updated!.Name);
+        db.Verify(d => d.SaveAsync(series, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

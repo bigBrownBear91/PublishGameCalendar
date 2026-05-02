@@ -16,12 +16,12 @@ public class IcsService : IIcsService
         Directory.CreateDirectory(_icsFilesPath);
     }
 
-    public string GetIcsFilePath(int seriesId)
+    public string GetIcsFilePath(string seriesId)
     {
         return Path.Combine(_icsFilesPath, $"{seriesId}.ics");
     }
 
-    public Task<List<Event>> ParseAsync(int seriesId)
+    public Task<List<Event>> ParseAsync(string seriesId)
     {
         string path = GetIcsFilePath(seriesId);
         if (!File.Exists(path))
@@ -33,7 +33,7 @@ public class IcsService : IIcsService
         return Task.FromResult(events);
     }
 
-    public async Task<EventDiff> DiffAsync(int seriesId, List<Event> freshEvents)
+    public async Task<EventDiff> DiffAsync(string seriesId, List<Event> freshEvents)
     {
         List<Event> existing = await ParseAsync(seriesId);
         Dictionary<string, Event> existingById = existing.ToDictionary(e => e.Uid);
@@ -54,7 +54,7 @@ public class IcsService : IIcsService
         return diff;
     }
 
-    public Task WriteAsync(int seriesId, List<Event> events)
+    public Task WriteAsync(string seriesId, List<Event> events)
     {
         Calendar calendar = new Calendar();
         foreach (Event ev in events)

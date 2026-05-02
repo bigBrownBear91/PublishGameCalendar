@@ -33,7 +33,7 @@ public class IcsServiceTests : IDisposable
         // Arrange — no file written
 
         // Act
-        List<Event> result = await _sut.ParseAsync(99);
+        List<Event> result = await _sut.ParseAsync("s-none");
 
         // Assert
         Assert.Empty(result);
@@ -58,8 +58,8 @@ public class IcsServiceTests : IDisposable
         };
 
         // Act
-        await _sut.WriteAsync(1, events);
-        List<Event> parsed = await _sut.ParseAsync(1);
+        await _sut.WriteAsync("s1", events);
+        List<Event> parsed = await _sut.ParseAsync("s1");
 
         // Assert
         Assert.Equal(2, parsed.Count);
@@ -79,10 +79,10 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync(2, events);
+        await _sut.WriteAsync("s2", events);
 
         // Act
-        EventDiff diff = await _sut.DiffAsync(2, events);
+        EventDiff diff = await _sut.DiffAsync("s2", events);
 
         // Assert
         Assert.False(diff.HasChanges);
@@ -100,7 +100,7 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync(3, existing);
+        await _sut.WriteAsync("s3", existing);
 
         List<Event> fresh = existing.Concat(new[]
         {
@@ -112,7 +112,7 @@ public class IcsServiceTests : IDisposable
         }).ToList();
 
         // Act
-        EventDiff diff = await _sut.DiffAsync(3, fresh);
+        EventDiff diff = await _sut.DiffAsync("s3", fresh);
 
         // Assert
         Assert.True(diff.HasChanges);
@@ -137,12 +137,12 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 8, 20, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync(4, existing);
+        await _sut.WriteAsync("s4", existing);
 
         List<Event> fresh = existing.Take(1).ToList();
 
         // Act
-        EventDiff diff = await _sut.DiffAsync(4, fresh);
+        EventDiff diff = await _sut.DiffAsync("s4", fresh);
 
         // Assert
         Assert.True(diff.HasChanges);
@@ -162,7 +162,7 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync(5, existing);
+        await _sut.WriteAsync("s5", existing);
 
         List<Event> fresh = new List<Event>
         {
@@ -174,7 +174,7 @@ public class IcsServiceTests : IDisposable
         };
 
         // Act
-        EventDiff diff = await _sut.DiffAsync(5, fresh);
+        EventDiff diff = await _sut.DiffAsync("s5", fresh);
 
         // Assert
         Assert.True(diff.HasChanges);
@@ -195,7 +195,7 @@ public class IcsServiceTests : IDisposable
         };
 
         // Act
-        EventDiff diff = await _sut.DiffAsync(6, fresh);
+        EventDiff diff = await _sut.DiffAsync("s6", fresh);
 
         // Assert
         Assert.True(diff.HasChanges);

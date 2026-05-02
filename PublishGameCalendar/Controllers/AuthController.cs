@@ -1,12 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using PublishGameCalendar.DTOs;
-using PublishGameCalendar.Identity;
-// ReSharper disable NullableWarningSuppressionIsUsed
 
 namespace PublishGameCalendar.Controllers;
 
@@ -15,52 +12,30 @@ namespace PublishGameCalendar.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IConfiguration _config;
-    private readonly UserManager<ApplicationUser> _userManager;
 
-    public AuthController(UserManager<ApplicationUser> userManager, IConfiguration config)
+    public AuthController(IConfiguration config)
     {
-        _userManager = userManager;
         _config = config;
     }
 
-    [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
-    {
-        ApplicationUser user = new ApplicationUser { UserName = request.Email, Email = request.Email };
-        bool isFirstUser = !_userManager.Users.Any();
-
-        IdentityResult result = await _userManager.CreateAsync(user, request.Password);
-
-        if (!result.Succeeded)
-            return BadRequest(result.Errors.Select(e => e.Description));
-
-        string role = isFirstUser ? Roles.Admin : Roles.User;
-        await _userManager.AddToRoleAsync(user, role);
-
-        return Ok();
-    }
-
     [HttpPost("login")]
-    public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
+    public ActionResult<LoginResponse> Login([FromBody] LoginRequest request)
     {
-        ApplicationUser? user = await _userManager.FindByEmailAsync(request.Email);
-        if (user is null || !await _userManager.CheckPasswordAsync(user, request.Password))
+        string? expectedUsername = _config["Admin:Username"];
+        string? expectedPassword = _config["Admin:Password"];
+
+        if (request.Username != expectedUsername || request.Password != expectedPassword)
             return Unauthorized();
 
-        IList<string> roles = await _userManager.GetRolesAsync(user);
-        string role = roles.FirstOrDefault() ?? Roles.User;
-        string token = GenerateJwt(user, role);
-
-        return Ok(new LoginResponse { Token = token, Email = user.Email!, Role = role });
+        string token = GenerateJwt();
+        return Ok(new LoginResponse { Token = token });
     }
 
-    private string GenerateJwt(ApplicationUser user, string role)
+    private string GenerateJwt()
     {
         Claim[] claims = new[]
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email!),
-            new Claim(ClaimTypes.Role, role)
+            new Claim(ClaimTypes.Role, "Admin")
         };
         SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
         SigningCredentials creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

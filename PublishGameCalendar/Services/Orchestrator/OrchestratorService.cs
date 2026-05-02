@@ -2,7 +2,6 @@ using PublishGameCalendar.Domain;
 using PublishGameCalendar.Repositories;
 using PublishGameCalendar.Services.Ics;
 using PublishGameCalendar.Services.Pollers;
-using PublishGameCalendar.Services.Queue;
 
 namespace PublishGameCalendar.Services.Orchestrator;
 
@@ -31,10 +30,8 @@ public class OrchestratorService : BackgroundService
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IPollingConfigRepository pollingConfigRepo =
             scope.ServiceProvider.GetRequiredService<IPollingConfigRepository>();
-        ISubscriptionRepository subscriptionRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
         IIcsService icsService = scope.ServiceProvider.GetRequiredService<IIcsService>();
         IPollerFactory pollerFactory = scope.ServiceProvider.GetRequiredService<IPollerFactory>();
-        IQueueAdapter queueAdapter = scope.ServiceProvider.GetRequiredService<IQueueAdapter>();
 
         List<PollingConfig> configs = await pollingConfigRepo.GetAllEnabledAsync();
         DateTime now = DateTime.UtcNow;
@@ -43,8 +40,7 @@ public class OrchestratorService : BackgroundService
         {
             if (!IsDue(config, now)) continue;
 
-            await PollSeriesAsync(config, pollingConfigRepo, subscriptionRepo,
-                icsService, pollerFactory, queueAdapter, now, ct);
+            await PollSeriesAsync(config, pollingConfigRepo, icsService, pollerFactory, now, ct);
         }
     }
 
@@ -57,10 +53,8 @@ public class OrchestratorService : BackgroundService
     private async Task PollSeriesAsync(
         PollingConfig config,
         IPollingConfigRepository pollingConfigRepo,
-        ISubscriptionRepository subscriptionRepo,
         IIcsService icsService,
         IPollerFactory pollerFactory,
-        IQueueAdapter queueAdapter,
         DateTime now,
         CancellationToken ct)
     {
@@ -95,19 +89,6 @@ public class OrchestratorService : BackgroundService
             {
                 await icsService.WriteAsync(series.Id, freshEvents);
                 config.LastChangeAt = now;
-
-                List<Subscription> subscribers = await subscriptionRepo.GetBySeriesIdAsync(series.Id);
-                // ReSharper disable once NullableWarningSuppressionIsUsed
-                List<string> emails = subscribers.Select(s => s.User.Email!).Where(e => !string.IsNullOrEmpty(e))
-                    .ToList();
-
-                if (emails.Count > 0)
-                    await queueAdapter.PublishAsync(new NotificationMessage
-                    {
-                        SeriesName = series.Name,
-                        ChangeSummary = diff.BuildSummary(),
-                        RecipientEmails = emails
-                    });
             }
 
             await pollingConfigRepo.UpdateAsync(config);

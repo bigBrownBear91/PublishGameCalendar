@@ -1,5 +1,6 @@
-using Microsoft.EntityFrameworkCore;
-using PublishGameCalendar.Data;
+using Amazon.DynamoDBv2.DataModel;
+using Moq;
+using PublishGameCalendar.Data.DynamoDb;
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.Repositories;
 using Xunit;
@@ -8,63 +9,67 @@ namespace PublishGameCalendar.Tests.Repositories;
 
 public class PollingConfigRepositoryTests
 {
-    private static ApplicationDbContext CreateContext(string dbName)
+    private static (Mock<IDynamoDbContext> db, DynamoDbPollingConfigRepository repo) Build()
     {
-        DbContextOptions<ApplicationDbContext> options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options;
-        return new ApplicationDbContext(options);
+        Mock<IDynamoDbContext> db = new();
+        return (db, new DynamoDbPollingConfigRepository(db.Object));
     }
 
     [Fact]
-    public async Task GetAllEnabledAsync_ReturnsOnlyEnabledConfigsWithEnabledSeries()
+    public async Task GetAllEnabledAsync_ReturnsOnlyConfigsWhereSeriesIsAlsoEnabled()
     {
         // Arrange
-        using ApplicationDbContext db =
-            CreateContext(nameof(GetAllEnabledAsync_ReturnsOnlyEnabledConfigsWithEnabledSeries));
-        Series enabledSeries = new Series
-            { Name = "PL", SourceUrl = "http://x.com", PollerType = "StubPoller", Enabled = true };
-        Series disabledSeries = new Series
-            { Name = "CL", SourceUrl = "http://y.com", PollerType = "StubPoller", Enabled = false };
-        db.Series.AddRange(enabledSeries, disabledSeries);
-        await db.SaveChangesAsync();
+        (Mock<IDynamoDbContext> db, DynamoDbPollingConfigRepository repo) = Build();
 
-        db.PollingConfigs.Add(new PollingConfig { SeriesId = enabledSeries.Id, Enabled = true });
-        db.PollingConfigs.Add(new PollingConfig { SeriesId = disabledSeries.Id, Enabled = true });
-        await db.SaveChangesAsync();
+        Series enabledSeries = new() { Id = "s1", Enabled = true };
+        Series disabledSeries = new() { Id = "s2", Enabled = false };
 
-        PollingConfigRepository repo = new PollingConfigRepository(db);
+        List<PollingConfig> scannedConfigs = new()
+        {
+            new PollingConfig { SeriesId = "s1", Enabled = true },
+            new PollingConfig { SeriesId = "s2", Enabled = true }
+        };
+
+        db.Setup(d => d.ScanAsync<PollingConfig>(It.IsAny<IEnumerable<ScanCondition>>()))
+            .ReturnsAsync(scannedConfigs);
+        db.Setup(d => d.LoadAsync<Series>("s1", It.IsAny<CancellationToken>())).ReturnsAsync(enabledSeries);
+        db.Setup(d => d.LoadAsync<Series>("s2", It.IsAny<CancellationToken>())).ReturnsAsync(disabledSeries);
 
         // Act
-        List<PollingConfig> enabled = await repo.GetAllEnabledAsync();
+        List<PollingConfig> result = await repo.GetAllEnabledAsync();
 
         // Assert
-        Assert.Single(enabled);
-        Assert.Equal(enabledSeries.Id, enabled[0].SeriesId);
+        Assert.Single(result);
+        Assert.Equal("s1", result[0].SeriesId);
     }
 
     [Fact]
-    public async Task UpdateAsync_PersistsIntervalChange()
+    public async Task UpdateAsync_CallsSaveOnContext()
     {
         // Arrange
-        using ApplicationDbContext db = CreateContext(nameof(UpdateAsync_PersistsIntervalChange));
-        Series series = new Series { Name = "PL", SourceUrl = "http://x.com", PollerType = "StubPoller" };
-        db.Series.Add(series);
-        await db.SaveChangesAsync();
-
-        PollingConfig config = new PollingConfig { SeriesId = series.Id, IntervalHours = 1 };
-        db.PollingConfigs.Add(config);
-        await db.SaveChangesAsync();
-
-        PollingConfigRepository repo = new PollingConfigRepository(db);
+        (Mock<IDynamoDbContext> db, DynamoDbPollingConfigRepository repo) = Build();
+        PollingConfig config = new() { SeriesId = "s1", IntervalHours = 6 };
 
         // Act
-        config.IntervalHours = 6;
         await repo.UpdateAsync(config);
 
         // Assert
-        PollingConfig? updated = await repo.GetBySeriesIdAsync(series.Id);
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Equal(6, updated!.IntervalHours);
+        db.Verify(d => d.SaveAsync(config, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetBySeriesIdAsync_DelegatesToLoadAsync()
+    {
+        // Arrange
+        (Mock<IDynamoDbContext> db, DynamoDbPollingConfigRepository repo) = Build();
+        PollingConfig stored = new() { SeriesId = "s1", IntervalHours = 2 };
+        db.Setup(d => d.LoadAsync<PollingConfig>("s1", It.IsAny<CancellationToken>())).ReturnsAsync(stored);
+
+        // Act
+        PollingConfig? result = await repo.GetBySeriesIdAsync("s1");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(2, result.IntervalHours);
     }
 }

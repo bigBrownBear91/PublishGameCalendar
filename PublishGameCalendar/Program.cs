@@ -1,31 +1,30 @@
 using System.Text;
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DataModel;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using PublishGameCalendar.Data;
-using PublishGameCalendar.Identity;
+using PublishGameCalendar.Data.DynamoDb;
 using PublishGameCalendar.Repositories;
 using PublishGameCalendar.Services.Ics;
 using PublishGameCalendar.Services.Orchestrator;
 using PublishGameCalendar.Services.Pollers;
-using PublishGameCalendar.Services.Queue;
-using RabbitMQ.Client;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// ── Database ──
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// ── Identity ──
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+// ── DynamoDB ──
+builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
+{
+    AmazonDynamoDBConfig config = new AmazonDynamoDBConfig
     {
-        options.Password.RequireNonAlphanumeric = false;
-        options.Password.RequireUppercase = false;
-    })
-    .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders();
+        RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(
+            builder.Configuration["AWS:Region"] ?? "eu-west-1")
+    };
+    return new AmazonDynamoDBClient(config);
+});
+builder.Services.AddSingleton<DynamoDBContext>(sp =>
+    new DynamoDBContext(sp.GetRequiredService<IAmazonDynamoDB>()));
+builder.Services.AddSingleton<IDynamoDbContext>(sp =>
+    new DynamoDbContextAdapter(sp.GetRequiredService<DynamoDBContext>()));
 
 // ── JWT ──
 builder.Services.AddAuthentication(options =>
@@ -51,30 +50,18 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// ── RabbitMQ ──
-builder.Services.AddSingleton<IConnectionFactory>(_ =>
-{
-    IConfigurationSection rmq = builder.Configuration.GetSection("RabbitMq");
-    return new ConnectionFactory
-    {
-        HostName = rmq["Host"] ?? "rabbitmq",
-        Port = int.Parse(rmq["Port"] ?? "5672"),
-        UserName = rmq["Username"] ?? "guest",
-        Password = rmq["Password"] ?? "guest"
-    };
-});
-
 // ── Repositories ──
-builder.Services.AddScoped<ISeriesRepository, SeriesRepository>();
-builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
-builder.Services.AddScoped<IPollingConfigRepository, PollingConfigRepository>();
+builder.Services.AddScoped<IPollingConfigRepository, DynamoDbPollingConfigRepository>();
+builder.Services.AddScoped<ISeriesRepository>(sp =>
+    new DynamoDbSeriesRepository(
+        sp.GetRequiredService<IDynamoDbContext>(),
+        sp.GetRequiredService<IPollingConfigRepository>()));
 
 // ── Services ──
 builder.Services.AddSingleton<IIcsService, IcsService>();
 builder.Services.AddTransient<StubPoller>();
 builder.Services.AddHttpClient<Poller1>();
 builder.Services.AddTransient<IPollerFactory, PollerFactory>();
-builder.Services.AddTransient<IQueueAdapter, RabbitMqQueueAdapter>();
 
 // ── Orchestrator ──
 builder.Services.AddHostedService<OrchestratorService>();
@@ -83,19 +70,6 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 WebApplication app = builder.Build();
-
-// ── Migrate & seed roles ──
-using (IServiceScope scope = app.Services.CreateScope())
-{
-    ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    RoleManager<IdentityRole> roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-
-    await db.Database.MigrateAsync();
-
-    foreach (string role in new[] { Roles.Admin, Roles.User })
-        if (!await roleManager.RoleExistsAsync(role))
-            await roleManager.CreateAsync(new IdentityRole(role));
-}
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();

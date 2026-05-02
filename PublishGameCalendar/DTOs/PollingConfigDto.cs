@@ -2,7 +2,7 @@ namespace PublishGameCalendar.DTOs;
 
 public class PollingConfigDto
 {
-    public int SeriesId { get; set; }
+    public string SeriesId { get; set; } = string.Empty;
     public string SeriesName { get; set; } = string.Empty;
     public int IntervalHours { get; set; }
     public DateTime? LastPolledAt { get; set; }

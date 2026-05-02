@@ -2,7 +2,7 @@ namespace PublishGameCalendar.DTOs;
 
 public class SeriesAdminDto
 {
-    public int Id { get; set; }
+    public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string SourceUrl { get; set; } = string.Empty;
     public string PollerType { get; set; } = string.Empty;

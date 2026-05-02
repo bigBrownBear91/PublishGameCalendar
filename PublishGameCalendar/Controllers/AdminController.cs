@@ -1,73 +1,23 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.DTOs;
-using PublishGameCalendar.Identity;
 using PublishGameCalendar.Repositories;
 
 namespace PublishGameCalendar.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = "Admin")]
 public class AdminController : ControllerBase
 {
     private readonly IPollingConfigRepository _pollingConfigRepo;
     private readonly ISeriesRepository _seriesRepo;
-    private readonly ISubscriptionRepository _subscriptionRepo;
-    private readonly UserManager<ApplicationUser> _userManager;
 
-    public AdminController(
-        UserManager<ApplicationUser> userManager,
-        ISeriesRepository seriesRepo,
-        ISubscriptionRepository subscriptionRepo,
-        IPollingConfigRepository pollingConfigRepo)
+    public AdminController(ISeriesRepository seriesRepo, IPollingConfigRepository pollingConfigRepo)
     {
-        _userManager = userManager;
         _seriesRepo = seriesRepo;
-        _subscriptionRepo = subscriptionRepo;
         _pollingConfigRepo = pollingConfigRepo;
-    }
-
-    // ── Users ──
-
-    [HttpGet("users")]
-    public async Task<ActionResult<List<UserDto>>> GetUsers()
-    {
-        List<ApplicationUser> users = _userManager.Users.ToList();
-        List<UserDto> dtos = new List<UserDto>();
-
-        foreach (ApplicationUser user in users)
-        {
-            IList<string> roles = await _userManager.GetRolesAsync(user);
-            List<Subscription> subs = await _subscriptionRepo.GetByUserIdAsync(user.Id);
-            dtos.Add(new UserDto
-            {
-                Id = user.Id,
-                // ReSharper disable once NullableWarningSuppressionIsUsed
-                Email = user.Email!,
-                Role = roles.FirstOrDefault() ?? Roles.User,
-                SubscribedSeries = subs.Select(s => s.Series.Name).ToList()
-            });
-        }
-
-        return Ok(dtos);
-    }
-
-    [HttpPut("users/{userId}/role")]
-    public async Task<IActionResult> SetRole(string userId, [FromBody] string role)
-    {
-        if (role != Roles.Admin && role != Roles.User)
-            return BadRequest("Invalid role.");
-
-        ApplicationUser? user = await _userManager.FindByIdAsync(userId);
-        if (user is null) return NotFound();
-
-        IList<string> currentRoles = await _userManager.GetRolesAsync(user);
-        await _userManager.RemoveFromRolesAsync(user, currentRoles);
-        await _userManager.AddToRoleAsync(user, role);
-        return NoContent();
     }
 
     // ── Series ──
@@ -83,7 +33,7 @@ public class AdminController : ControllerBase
             SourceUrl = s.SourceUrl,
             PollerType = s.PollerType,
             Enabled = s.Enabled,
-            CreatedAt = s.CreatedAt,
+            CreatedAt = DateTime.Parse(s.CreatedAt),
             PollingConfig = s.PollingConfig is null
                 ? null
                 : new PollingConfigDto
@@ -106,6 +56,7 @@ public class AdminController : ControllerBase
     {
         Series series = new Series
         {
+            Id = Guid.NewGuid().ToString(),
             Name = request.Name,
             SourceUrl = request.SourceUrl,
             PollerType = request.PollerType,
@@ -120,7 +71,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpPut("series/{id}")]
-    public async Task<IActionResult> UpdateSeries(int id, [FromBody] UpdateSeriesRequest request)
+    public async Task<IActionResult> UpdateSeries(string id, [FromBody] UpdateSeriesRequest request)
     {
         Series? series = await _seriesRepo.GetByIdAsync(id);
         if (series is null) return NotFound();
@@ -134,7 +85,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpDelete("series/{id}")]
-    public async Task<IActionResult> DeleteSeries(int id)
+    public async Task<IActionResult> DeleteSeries(string id)
     {
         if (await _seriesRepo.GetByIdAsync(id) is null) return NotFound();
         await _seriesRepo.DeleteAsync(id);
@@ -163,7 +114,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpPut("polling-config/{seriesId}")]
-    public async Task<IActionResult> UpdatePollingConfig(int seriesId, [FromBody] UpdatePollingConfigRequest request)
+    public async Task<IActionResult> UpdatePollingConfig(string seriesId, [FromBody] UpdatePollingConfigRequest request)
     {
         PollingConfig? config = await _pollingConfigRepo.GetBySeriesIdAsync(seriesId);
         if (config is null) return NotFound();
