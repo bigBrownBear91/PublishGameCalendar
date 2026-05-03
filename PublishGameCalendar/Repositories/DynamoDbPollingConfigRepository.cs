@@ -24,7 +24,7 @@ public class DynamoDbPollingConfigRepository : IPollingConfigRepository
     public async Task<List<PollingConfig>> GetAllEnabledAsync()
     {
         List<PollingConfig> configs = await _db.ScanAsync<PollingConfig>(
-            new[] { new ScanCondition("enabled", ScanOperator.Equal, true) });
+            new[] { new ScanCondition("Enabled", ScanOperator.Equal, true) });
         await PopulateSeriesAsync(configs);
         return configs.Where(c => c.Series.Enabled).ToList();
     }
