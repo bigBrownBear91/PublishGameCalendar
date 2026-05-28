@@ -133,7 +133,7 @@ public class OrchestratorServiceTests
 
         // Assert — neither diff nor write was called, protecting existing data
         icsService.Verify(s => s.DiffAsync(It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
-        icsService.Verify(s => s.WriteAsync(It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
+        icsService.Verify(s => s.WriteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
     }
 
     [Fact]

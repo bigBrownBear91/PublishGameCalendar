@@ -87,7 +87,7 @@ public class OrchestratorService : BackgroundService
 
             if (diff.HasChanges)
             {
-                await icsService.WriteAsync(series.Id, freshEvents);
+                await icsService.WriteAsync(series.Id, series.Name, freshEvents);
                 config.LastChangeAt = now;
             }
 

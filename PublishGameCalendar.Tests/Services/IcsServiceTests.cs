@@ -58,13 +58,34 @@ public class IcsServiceTests : IDisposable
         };
 
         // Act
-        await _sut.WriteAsync("s1", events);
+        await _sut.WriteAsync("s1", "Series One", events);
         List<Event> parsed = await _sut.ParseAsync("s1");
 
         // Assert
         Assert.Equal(2, parsed.Count);
         Assert.Contains(parsed, e => e.Uid == "uid-1" && e.Title == "Match A");
         Assert.Contains(parsed, e => e.Uid == "uid-2" && e.Title == "Match B");
+    }
+
+    [Fact]
+    public async Task WriteAsync_SetsCalendarNameProperty()
+    {
+        // Arrange
+        List<Event> events = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
+            }
+        };
+
+        // Act
+        await _sut.WriteAsync("s-name", "Swiss League 2025/26", events);
+
+        // Assert
+        string content = File.ReadAllText(_sut.GetIcsFilePath("s-name"));
+        Assert.Contains("X-WR-CALNAME:Swiss League 2025/26", content);
     }
 
     [Fact]
@@ -79,7 +100,7 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync("s2", events);
+        await _sut.WriteAsync("s2", "Series Two", events);
 
         // Act
         EventDiff diff = await _sut.DiffAsync("s2", events);
@@ -100,7 +121,7 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync("s3", existing);
+        await _sut.WriteAsync("s3", "Series Three", existing);
 
         List<Event> fresh = existing.Concat(new[]
         {
@@ -137,7 +158,7 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 8, 20, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync("s4", existing);
+        await _sut.WriteAsync("s4", "Series Four", existing);
 
         List<Event> fresh = existing.Take(1).ToList();
 
@@ -162,7 +183,7 @@ public class IcsServiceTests : IDisposable
                 End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
             }
         };
-        await _sut.WriteAsync("s5", existing);
+        await _sut.WriteAsync("s5", "Series Five", existing);
 
         List<Event> fresh = new List<Event>
         {

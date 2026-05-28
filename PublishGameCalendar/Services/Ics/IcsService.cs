@@ -54,9 +54,10 @@ public class IcsService : IIcsService
         return diff;
     }
 
-    public Task WriteAsync(string seriesId, List<Event> events)
+    public Task WriteAsync(string seriesId, string seriesName, List<Event> events)
     {
         Calendar calendar = new Calendar();
+        calendar.AddProperty("X-WR-CALNAME", seriesName);
         foreach (Event ev in events)
             calendar.Events.Add(MapToCalendarEvent(ev));
 
