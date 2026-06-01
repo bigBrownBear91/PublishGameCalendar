@@ -1,5 +1,6 @@
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.Repositories;
+using PublishGameCalendar.Services.Enrichment;
 using PublishGameCalendar.Services.Ics;
 using PublishGameCalendar.Services.Pollers;
 
@@ -32,6 +33,9 @@ public class OrchestratorService : BackgroundService
             scope.ServiceProvider.GetRequiredService<IPollingConfigRepository>();
         IIcsService icsService = scope.ServiceProvider.GetRequiredService<IIcsService>();
         IPollerFactory pollerFactory = scope.ServiceProvider.GetRequiredService<IPollerFactory>();
+        IEnrichmentRepository enrichmentRepo =
+            scope.ServiceProvider.GetRequiredService<IEnrichmentRepository>();
+        IEventEnricher eventEnricher = scope.ServiceProvider.GetRequiredService<IEventEnricher>();
 
         List<PollingConfig> configs = await pollingConfigRepo.GetAllEnabledAsync();
         DateTime now = DateTime.UtcNow;
@@ -40,7 +44,8 @@ public class OrchestratorService : BackgroundService
         {
             if (!IsDue(config, now)) continue;
 
-            await PollSeriesAsync(config, pollingConfigRepo, icsService, pollerFactory, now, ct);
+            await PollSeriesAsync(config, pollingConfigRepo, icsService, pollerFactory,
+                enrichmentRepo, eventEnricher, now, ct);
         }
     }
 
@@ -55,6 +60,8 @@ public class OrchestratorService : BackgroundService
         IPollingConfigRepository pollingConfigRepo,
         IIcsService icsService,
         IPollerFactory pollerFactory,
+        IEnrichmentRepository enrichmentRepo,
+        IEventEnricher eventEnricher,
         DateTime now,
         CancellationToken ct)
     {
@@ -79,7 +86,12 @@ public class OrchestratorService : BackgroundService
                 return;
             }
 
-            EventDiff diff = await icsService.DiffAsync(series.Id, freshEvents);
+            EventDiff diff = await icsService.DiffRawAsync(series.Id, freshEvents);
+
+            await icsService.WriteRawSnapshotAsync(series.Id, freshEvents);
+
+            List<EventEnrichment> enrichments =
+                await DeleteOrphanEnrichmentsAsync(enrichmentRepo, series.Id, freshEvents);
 
             config.LastPolledAt = now;
             config.LastPollFailed = false;
@@ -87,7 +99,8 @@ public class OrchestratorService : BackgroundService
 
             if (diff.HasChanges)
             {
-                await icsService.WriteAsync(series.Id, series.Name, freshEvents);
+                List<Event> enrichedEvents = eventEnricher.Merge(freshEvents, enrichments);
+                await icsService.WriteAsync(series.Id, series.Name, enrichedEvents);
                 config.LastChangeAt = now;
             }
 
@@ -104,5 +117,18 @@ public class OrchestratorService : BackgroundService
                 _logger.LogError(updateEx, "Failed to persist poll failure for series '{Name}' (id={Id})", series.Name, series.Id);
             }
         }
+    }
+
+    private static async Task<List<EventEnrichment>> DeleteOrphanEnrichmentsAsync(
+        IEnrichmentRepository enrichmentRepo,
+        string seriesId,
+        List<Event> freshEvents)
+    {
+        HashSet<string> liveUids = freshEvents.Select(e => e.Uid).ToHashSet();
+        List<EventEnrichment> enrichments = await enrichmentRepo.GetBySeriesIdAsync(seriesId);
+        foreach (EventEnrichment enrichment in enrichments)
+            if (!liveUids.Contains(enrichment.EventUid))
+                await enrichmentRepo.DeleteAsync(seriesId, enrichment.EventUid);
+        return enrichments.Where(e => liveUids.Contains(e.EventUid)).ToList();
     }
 }

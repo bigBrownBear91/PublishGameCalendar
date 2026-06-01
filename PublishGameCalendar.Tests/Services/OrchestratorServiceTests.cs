@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.Repositories;
+using PublishGameCalendar.Services.Enrichment;
 using PublishGameCalendar.Services.Ics;
 using PublishGameCalendar.Services.Orchestrator;
 using PublishGameCalendar.Services.Pollers;
@@ -20,13 +21,24 @@ public class OrchestratorServiceTests
     private static IServiceProvider BuildProvider(
         IPollingConfigRepository pollingConfigRepo,
         IIcsService icsService,
-        IPollerFactory pollerFactory)
+        IPollerFactory pollerFactory,
+        IEnrichmentRepository? enrichmentRepo = null,
+        IEventEnricher? eventEnricher = null)
     {
         ServiceCollection services = new ServiceCollection();
         services.AddSingleton(pollingConfigRepo);
         services.AddSingleton(icsService);
         services.AddSingleton(pollerFactory);
+        services.AddSingleton(enrichmentRepo ?? DefaultEnrichmentRepo().Object);
+        services.AddSingleton(eventEnricher ?? new EventEnricher());
         return services.BuildServiceProvider();
+    }
+
+    private static Mock<IEnrichmentRepository> DefaultEnrichmentRepo()
+    {
+        Mock<IEnrichmentRepository> repo = new Mock<IEnrichmentRepository>();
+        repo.Setup(r => r.GetBySeriesIdAsync(It.IsAny<string>())).ReturnsAsync([]);
+        return repo;
     }
 
     private static Mock<IPollerFactory> PollerReturning(List<Event> events)
@@ -52,7 +64,7 @@ public class OrchestratorServiceTests
             NullLogger<OrchestratorService>.Instance);
 
     [Fact]
-    public async Task PollDueSeriesAsync_WhenSeriesIsDue_CallsDiffOnIcsService()
+    public async Task PollDueSeriesAsync_WhenSeriesIsDue_CallsDiffRawOnIcsService()
     {
         // Arrange
         Series series = new Series { Id = "s1", Name = "PL", PollerType = "any", Enabled = true };
@@ -66,7 +78,7 @@ public class OrchestratorServiceTests
 
         TaskCompletionSource tickComplete = new TaskCompletionSource();
         Mock<IIcsService> icsService = new Mock<IIcsService>();
-        icsService.Setup(s => s.DiffAsync("s1", It.IsAny<List<Event>>()))
+        icsService.Setup(s => s.DiffRawAsync("s1", It.IsAny<List<Event>>()))
             .Callback(() => tickComplete.TrySetResult())
             .ReturnsAsync(new EventDiff());
 
@@ -77,7 +89,157 @@ public class OrchestratorServiceTests
         await RunOneTick(sut, tickComplete);
 
         // Assert
-        icsService.Verify(s => s.DiffAsync("s1", It.IsAny<List<Event>>()), Times.AtLeastOnce);
+        icsService.Verify(s => s.DiffRawAsync("s1", It.IsAny<List<Event>>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenSeriesIsDue_AlwaysWritesRawSnapshot()
+    {
+        // Arrange
+        Series series = new Series { Id = "s1", Name = "PL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = "s1", Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        Mock<IIcsService> icsService = new Mock<IIcsService>();
+        icsService.Setup(s => s.DiffRawAsync("s1", It.IsAny<List<Event>>())).ReturnsAsync(new EventDiff());
+        icsService.Setup(s => s.WriteRawSnapshotAsync("s1", It.IsAny<List<Event>>()))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        OrchestratorService sut = BuildSut(BuildProvider(
+            pollingConfigRepo.Object, icsService.Object, PollerReturning(SomeEvents).Object));
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert — raw snapshot always written after successful poll
+        icsService.Verify(s => s.WriteRawSnapshotAsync("s1", SomeEvents), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenChangesDetected_WritesEnrichedIcs()
+    {
+        // Arrange
+        Series series = new Series { Id = "s1", Name = "PL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = "s1", Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+
+        EventDiff diffWithChanges = new EventDiff();
+        diffWithChanges.Added.Add(SomeEvents[0]);
+
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        Mock<IIcsService> icsService = new Mock<IIcsService>();
+        icsService.Setup(s => s.DiffRawAsync("s1", It.IsAny<List<Event>>())).ReturnsAsync(diffWithChanges);
+        icsService.Setup(s => s.WriteAsync("s1", "PL", It.IsAny<List<Event>>()))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        OrchestratorService sut = BuildSut(BuildProvider(
+            pollingConfigRepo.Object, icsService.Object, PollerReturning(SomeEvents).Object));
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert
+        icsService.Verify(s => s.WriteAsync("s1", "PL", It.IsAny<List<Event>>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_WhenChangesDetected_MergesEnrichmentsBeforeWrite()
+    {
+        // Arrange
+        Series series = new Series { Id = "s1", Name = "PL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = "s1", Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+
+        EventDiff diffWithChanges = new EventDiff();
+        diffWithChanges.Added.Add(SomeEvents[0]);
+
+        List<EventEnrichment> enrichments =
+            [new EventEnrichment { SeriesId = "s1", EventUid = "e1", Description = "Final" }];
+
+        Mock<IEnrichmentRepository> enrichmentRepo = new Mock<IEnrichmentRepository>();
+        // Only one query issued (reused for both orphan cleanup and merge)
+        enrichmentRepo.Setup(r => r.GetBySeriesIdAsync("s1")).ReturnsAsync(enrichments);
+
+        Mock<IEventEnricher> eventEnricher = new Mock<IEventEnricher>();
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        eventEnricher.Setup(e => e.Merge(It.IsAny<List<Event>>(), It.IsAny<IEnumerable<EventEnrichment>>()))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(SomeEvents);
+
+        Mock<IIcsService> icsService = new Mock<IIcsService>();
+        icsService.Setup(s => s.DiffRawAsync("s1", It.IsAny<List<Event>>())).ReturnsAsync(diffWithChanges);
+
+        OrchestratorService sut = BuildSut(BuildProvider(
+            pollingConfigRepo.Object, icsService.Object, PollerReturning(SomeEvents).Object,
+            enrichmentRepo.Object, eventEnricher.Object));
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert — enrichments fetched exactly once and passed to merger
+        enrichmentRepo.Verify(r => r.GetBySeriesIdAsync("s1"), Times.Once);
+        eventEnricher.Verify(e => e.Merge(It.IsAny<List<Event>>(), It.IsAny<IEnumerable<EventEnrichment>>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task PollDueSeriesAsync_DeletesOrphanEnrichmentsAfterPoll()
+    {
+        // Arrange
+        Series series = new Series { Id = "s1", Name = "PL", PollerType = "any", Enabled = true };
+        PollingConfig config = new PollingConfig
+        {
+            SeriesId = "s1", Series = series, IntervalHours = 1, Enabled = true, LastPolledAt = null
+        };
+
+        Mock<IPollingConfigRepository> pollingConfigRepo = new Mock<IPollingConfigRepository>();
+        pollingConfigRepo.Setup(r => r.GetAllEnabledAsync()).ReturnsAsync([config]);
+
+        List<EventEnrichment> enrichments =
+        [
+            new EventEnrichment { SeriesId = "s1", EventUid = "e1" },   // still live
+            new EventEnrichment { SeriesId = "s1", EventUid = "e-gone" } // orphan
+        ];
+
+        Mock<IEnrichmentRepository> enrichmentRepo = new Mock<IEnrichmentRepository>();
+        enrichmentRepo.Setup(r => r.GetBySeriesIdAsync("s1")).ReturnsAsync(enrichments);
+
+        TaskCompletionSource tickComplete = new TaskCompletionSource();
+        enrichmentRepo.Setup(r => r.DeleteAsync("s1", "e-gone"))
+            .Callback(() => tickComplete.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        Mock<IIcsService> icsService = new Mock<IIcsService>();
+        icsService.Setup(s => s.DiffRawAsync("s1", It.IsAny<List<Event>>())).ReturnsAsync(new EventDiff());
+
+        // Poller returns only e1; e-gone is not in fresh events
+        OrchestratorService sut = BuildSut(BuildProvider(
+            pollingConfigRepo.Object, icsService.Object, PollerReturning(SomeEvents).Object,
+            enrichmentRepo.Object));
+
+        // Act
+        await RunOneTick(sut, tickComplete);
+
+        // Assert — orphan deleted, live enrichment kept
+        enrichmentRepo.Verify(r => r.DeleteAsync("s1", "e-gone"), Times.AtLeastOnce);
+        enrichmentRepo.Verify(r => r.DeleteAsync("s1", "e1"), Times.Never);
     }
 
     [Fact]
@@ -105,7 +267,7 @@ public class OrchestratorServiceTests
         await Task.Delay(300);
 
         // Assert
-        icsService.Verify(s => s.DiffAsync(It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
+        icsService.Verify(s => s.DiffRawAsync(It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
     }
 
     [Fact]
@@ -132,7 +294,7 @@ public class OrchestratorServiceTests
         await Task.Delay(300);
 
         // Assert — neither diff nor write was called, protecting existing data
-        icsService.Verify(s => s.DiffAsync(It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
+        icsService.Verify(s => s.DiffRawAsync(It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
         icsService.Verify(s => s.WriteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<Event>>()), Times.Never);
     }
 
@@ -183,7 +345,7 @@ public class OrchestratorServiceTests
             .Returns(Task.CompletedTask);
 
         Mock<IIcsService> icsService = new Mock<IIcsService>();
-        icsService.Setup(s => s.DiffAsync("s5", It.IsAny<List<Event>>())).ReturnsAsync(new EventDiff());
+        icsService.Setup(s => s.DiffRawAsync("s5", It.IsAny<List<Event>>())).ReturnsAsync(new EventDiff());
 
         OrchestratorService sut = BuildSut(BuildProvider(
             pollingConfigRepo.Object, icsService.Object, PollerReturning(SomeEvents).Object));

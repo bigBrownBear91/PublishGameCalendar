@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PublishGameCalendar.Domain;
 using PublishGameCalendar.DTOs;
 using PublishGameCalendar.Repositories;
+using PublishGameCalendar.Services.Ics;
 
 namespace PublishGameCalendar.Controllers;
 
@@ -13,11 +14,19 @@ public class AdminController : ControllerBase
 {
     private readonly IPollingConfigRepository _pollingConfigRepo;
     private readonly ISeriesRepository _seriesRepo;
+    private readonly IEnrichmentRepository _enrichmentRepo;
+    private readonly IIcsService _icsService;
 
-    public AdminController(ISeriesRepository seriesRepo, IPollingConfigRepository pollingConfigRepo)
+    public AdminController(
+        ISeriesRepository seriesRepo,
+        IPollingConfigRepository pollingConfigRepo,
+        IEnrichmentRepository enrichmentRepo,
+        IIcsService icsService)
     {
         _seriesRepo = seriesRepo;
         _pollingConfigRepo = pollingConfigRepo;
+        _enrichmentRepo = enrichmentRepo;
+        _icsService = icsService;
     }
 
     // ── Series ──
@@ -88,6 +97,8 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> DeleteSeries(string id)
     {
         if (await _seriesRepo.GetByIdAsync(id) is null) return NotFound();
+        await _enrichmentRepo.DeleteAllBySeriesIdAsync(id);
+        await _icsService.DeleteFilesAsync(id);
         await _seriesRepo.DeleteAsync(id);
         return NoContent();
     }
