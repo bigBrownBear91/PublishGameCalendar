@@ -9,6 +9,7 @@ using PublishGameCalendar.Services.Enrichment;
 using PublishGameCalendar.Services.Ics;
 using PublishGameCalendar.Services.Orchestrator;
 using PublishGameCalendar.Services.Pollers;
+using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -74,8 +75,8 @@ builder.Services.AddOpenApi();
 
 WebApplication app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-    app.MapOpenApi();
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
