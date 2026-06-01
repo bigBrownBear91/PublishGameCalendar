@@ -16,14 +16,20 @@ public class IcsService : IIcsService
         Directory.CreateDirectory(_icsFilesPath);
     }
 
-    public string GetIcsFilePath(string seriesId)
-    {
-        return Path.Combine(_icsFilesPath, $"{seriesId}.ics");
-    }
+    public string GetIcsFilePath(string seriesId) =>
+        Path.Combine(_icsFilesPath, $"{seriesId}.ics");
 
-    public Task<List<Event>> ParseAsync(string seriesId)
+    private string GetRawSnapshotFilePath(string seriesId) =>
+        Path.Combine(_icsFilesPath, $"{seriesId}_raw.ics");
+
+    public Task<List<Event>> ParseAsync(string seriesId) =>
+        ParseFileAsync(GetIcsFilePath(seriesId));
+
+    public Task<List<Event>> ParseRawSnapshotAsync(string seriesId) =>
+        ParseFileAsync(GetRawSnapshotFilePath(seriesId));
+
+    private static Task<List<Event>> ParseFileAsync(string path)
     {
-        string path = GetIcsFilePath(seriesId);
         if (!File.Exists(path))
             return Task.FromResult(new List<Event>());
 
@@ -36,6 +42,17 @@ public class IcsService : IIcsService
     public async Task<EventDiff> DiffAsync(string seriesId, List<Event> freshEvents)
     {
         List<Event> existing = await ParseAsync(seriesId);
+        return ComputeDiff(existing, freshEvents);
+    }
+
+    public async Task<EventDiff> DiffRawAsync(string seriesId, List<Event> freshEvents)
+    {
+        List<Event> existing = await ParseRawSnapshotAsync(seriesId);
+        return ComputeDiff(existing, freshEvents);
+    }
+
+    private static EventDiff ComputeDiff(List<Event> existing, List<Event> freshEvents)
+    {
         Dictionary<string, Event> existingById = existing.ToDictionary(e => e.Uid);
         Dictionary<string, Event> freshById = freshEvents.ToDictionary(e => e.Uid);
 
@@ -64,6 +81,27 @@ public class IcsService : IIcsService
         CalendarSerializer serializer = new CalendarSerializer();
         string? content = serializer.SerializeToString(calendar);
         File.WriteAllText(GetIcsFilePath(seriesId), content);
+        return Task.CompletedTask;
+    }
+
+    public Task WriteRawSnapshotAsync(string seriesId, List<Event> events)
+    {
+        Calendar calendar = new Calendar();
+        foreach (Event ev in events)
+            calendar.Events.Add(MapToCalendarEvent(ev));
+
+        CalendarSerializer serializer = new CalendarSerializer();
+        string? content = serializer.SerializeToString(calendar);
+        File.WriteAllText(GetRawSnapshotFilePath(seriesId), content);
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteFilesAsync(string seriesId)
+    {
+        string icsPath = GetIcsFilePath(seriesId);
+        string rawPath = GetRawSnapshotFilePath(seriesId);
+        if (File.Exists(icsPath)) File.Delete(icsPath);
+        if (File.Exists(rawPath)) File.Delete(rawPath);
         return Task.CompletedTask;
     }
 

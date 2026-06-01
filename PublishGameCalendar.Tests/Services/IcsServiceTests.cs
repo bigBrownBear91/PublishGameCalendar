@@ -222,4 +222,150 @@ public class IcsServiceTests : IDisposable
         Assert.True(diff.HasChanges);
         Assert.Single(diff.Added);
     }
+
+    // ── Raw snapshot ──
+
+    [Fact]
+    public async Task WriteRawSnapshotAsync_ThenParseRawSnapshotAsync_RoundTripsEvents()
+    {
+        // Arrange
+        List<Event> events = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
+            }
+        };
+
+        // Act
+        await _sut.WriteRawSnapshotAsync("sr1", events);
+        List<Event> parsed = await _sut.ParseRawSnapshotAsync("sr1");
+
+        // Assert
+        Assert.Single(parsed);
+        Assert.Equal("uid-1", parsed[0].Uid);
+    }
+
+    [Fact]
+    public async Task WriteRawSnapshotAsync_DoesNotWriteCalendarNameProperty()
+    {
+        // Arrange
+        List<Event> events = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
+            }
+        };
+
+        // Act
+        await _sut.WriteRawSnapshotAsync("sr2", events);
+
+        // Assert — raw file must not contain X-WR-CALNAME (not user-visible)
+        string rawPath = Path.Combine(_tempDir, "sr2_raw.ics");
+        string content = File.ReadAllText(rawPath);
+        Assert.DoesNotContain("X-WR-CALNAME", content);
+    }
+
+    [Fact]
+    public async Task ParseRawSnapshotAsync_WhenNoFileExists_ReturnsEmptyList()
+    {
+        // Arrange — no file written
+
+        // Act
+        List<Event> result = await _sut.ParseRawSnapshotAsync("sr-none");
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task DiffRawAsync_WhenNoRawSnapshot_AllFreshEventsAreAdded()
+    {
+        // Arrange — no raw snapshot on disk
+        List<Event> fresh = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
+            }
+        };
+
+        // Act
+        EventDiff diff = await _sut.DiffRawAsync("sr3", fresh);
+
+        // Assert
+        Assert.True(diff.HasChanges);
+        Assert.Single(diff.Added);
+    }
+
+    [Fact]
+    public async Task DiffRawAsync_ComparesAgainstRawSnapshotNotEnrichedFile()
+    {
+        // Arrange — raw snapshot has event without description; enriched .ics has description added
+        List<Event> rawEvents = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc), Description = null
+            }
+        };
+        await _sut.WriteRawSnapshotAsync("sr4", rawEvents);
+
+        // Enriched .ics has the same event but with admin-added description
+        List<Event> enrichedEvents = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc), Description = "Admin note"
+            }
+        };
+        await _sut.WriteAsync("sr4", "Series", enrichedEvents);
+
+        // Fresh poll returns same data as raw (no change on website)
+        List<Event> freshFromWebsite = rawEvents;
+
+        // Act — diff raw should report no changes (website didn't change)
+        EventDiff diff = await _sut.DiffRawAsync("sr4", freshFromWebsite);
+
+        // Assert
+        Assert.False(diff.HasChanges);
+    }
+
+    [Fact]
+    public async Task DeleteFilesAsync_RemovesBothEnrichedAndRawFiles()
+    {
+        // Arrange
+        List<Event> events = new List<Event>
+        {
+            new Event
+            {
+                Uid = "uid-1", Title = "Match A", Start = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                End = new DateTime(2026, 5, 1, 17, 0, 0, DateTimeKind.Utc)
+            }
+        };
+        await _sut.WriteAsync("sd1", "Series", events);
+        await _sut.WriteRawSnapshotAsync("sd1", events);
+        Assert.True(File.Exists(Path.Combine(_tempDir, "sd1.ics")));
+        Assert.True(File.Exists(Path.Combine(_tempDir, "sd1_raw.ics")));
+
+        // Act
+        await _sut.DeleteFilesAsync("sd1");
+
+        // Assert
+        Assert.False(File.Exists(Path.Combine(_tempDir, "sd1.ics")));
+        Assert.False(File.Exists(Path.Combine(_tempDir, "sd1_raw.ics")));
+    }
+
+    [Fact]
+    public async Task DeleteFilesAsync_WhenFilesDoNotExist_DoesNotThrow()
+    {
+        // Act & Assert — should not throw
+        await _sut.DeleteFilesAsync("sd-missing");
+    }
 }
