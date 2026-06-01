@@ -18,6 +18,7 @@ There can be multiple series of events, for each series of events, a .ics-file i
 - The .ics-files are stored on a persistent EBS volume mounted at `/data/ics`
 - The frontend consists of simple HTML/JS files, hosted and served by the webserver
 - Authentication is settings-based: admin credentials are stored in appsettings/environment variables and validated to issue a JWT
+- The OpenAPI spec is served at `/openapi/v1.json`; a Scalar interactive UI is available at `/scalar/v1` (both public, no auth required)
 
 # Coding guidelines
 - The code is written in an object oriented fashion and adheres to basic principles as SOLID and DRY. Low coupling and high cohesion are maintained
@@ -52,6 +53,7 @@ Two persistent stores:
 - **AdminController** — series CRUD, polling config; requires Admin role; deletes enrichments and ICS files on series delete
 - **EnrichmentController** — per-event enrichment CRUD (`GET/PUT/DELETE /api/enrichments/{seriesId}/{eventUid}`); requires Admin role; regenerates enriched `.ics` immediately on change
 - **Static File Middleware** — serves HTML/JS frontend
+- **OpenAPI / Scalar** — spec at `/openapi/v1.json`; interactive UI at `/scalar/v1`; available in all environments
 
 ### Orchestrator (IHostedService background service)
 Runs on a schedule read from the database. For each active series:
